@@ -1395,6 +1395,49 @@ $('#btnCep').onclick = async ()=>{
   }
 };
 
+/* ---------- coordenada colada ---------- */
+function lerCoordenadas(txt){
+  txt=String(txt||'').trim();
+  const padroes=[
+    /@(-?\d+\.\d+),(-?\d+\.\d+)/,               // .../@-23.54,-46.62,19z
+    /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,           // place/...!3d..!4d..
+    /[?&]q=(-?\d+\.\d+),\s*(-?\d+\.\d+)/,       // ?q=lat,lon
+    /[?&]ll=(-?\d+\.\d+),\s*(-?\d+\.\d+)/,
+    /(-?\d{1,2}[.,]\d{3,})\s*[,;\s]\s*(-?\d{1,3}[.,]\d{3,})/
+  ];
+  for(const p of padroes){
+    const m=txt.match(p);
+    if(!m) continue;
+    const lat=parseFloat(String(m[1]).replace(',','.'));
+    const lon=parseFloat(String(m[2]).replace(',','.'));
+    if(isFinite(lat)&&isFinite(lon)&&Math.abs(lat)<=90&&Math.abs(lon)<=180)
+      return {lat,lon};
+  }
+  return null;
+}
+document.getElementById('btnCoord').onclick = ()=>{
+  const msg=t=>document.getElementById('coordMsg').innerHTML=t;
+  const c=lerCoordenadas(document.getElementById('coord').value);
+  if(!c){ msg('<span class="al">Não reconheci.</span> Cole algo como '+
+    '<b>-23.5432, -46.6291</b> ou o link inteiro do Google Maps.'); return; }
+  const sl=document.getElementById('lat'), sn=document.getElementById('lon');
+  const lat=Math.min(+sl.max, Math.max(+sl.min, c.lat));
+  const lon=Math.min(+sn.max, Math.max(+sn.min, c.lon));
+  const cortou = (lat!==c.lat || lon!==c.lon);
+  P.lat=lat; P.lon=lon; sl.value=lat; sn.value=lon;
+  for(const j in cacheHSP) delete cacheHSP[j];
+  for(const j in cacheDia) delete cacheDia[j];
+  msg(`Aplicado: <b>${br(P.lat,5)}, ${br(P.lon,5)}</b>.`+
+    (cortou?' <span class="al">Fora da faixa do Brasil — ajustei para o limite.</span>':
+     ' Ligue o satélite e gire o azimute até bater com a foto.'));
+  sincronizar(); reconstruir();
+  if(!P.mapa){ P.mapa=true; sincronizar(); }
+  carregarMapa();
+};
+document.getElementById('coord').addEventListener('keydown', e=>{
+  if(e.key==='Enter'){ e.preventDefault(); document.getElementById('btnCoord').click(); }
+});
+
 /* ===================== abas / painel ===================== */
 document.querySelectorAll('#tabs button').forEach(b=>{
   b.onclick=()=>{
