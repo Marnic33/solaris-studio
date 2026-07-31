@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import * as S from './nucleo/solar.js';
-import { buscarIrradiacao } from './nucleo/dados.js';
+import { buscarIrradiacao, buscarCEP } from './nucleo/dados.js';
 import './estilo.css';
 
 /* =========================================================================
@@ -1378,25 +1378,20 @@ $('#btnCep').onclick = async ()=>{
   if(cep.length!==8){ msg('CEP incompleto — precisa de 8 dígitos.'); return; }
   msg('Buscando…');
   try{
-    const r=await fetch(`https://brasilapi.com.br/api/cep/v2/${cep}`);
-    if(!r.ok) throw new Error('não encontrado');
-    const d=await r.json();
-    const c=d.location && d.location.coordinates;
-    if(c && c.latitude){
-      P.lat=+(+c.latitude).toFixed(2); P.lon=+(+c.longitude).toFixed(2);
-      msg(`<b>${d.city} / ${d.state}</b> — lat ${br(P.lat,2)}, lon ${br(P.lon,2)}.`);
-    } else if(CAPITAIS[d.state]){
-      [P.lat,P.lon]=CAPITAIS[d.state];
-      msg(`<b>${d.city} / ${d.state}</b> — sem coordenada exata para este CEP, `+
-          `usando a capital do estado. Ajuste a latitude se precisar de precisão.`);
-    } else { msg('CEP encontrado, mas sem coordenadas.'); return; }
+    const d = await buscarCEP(cep);
+    P.lat=d.lat; P.lon=d.lon;
     $('#lat').value=P.lat; $('#lon').value=P.lon;
     for(const j in cacheHSP) delete cacheHSP[j];
     for(const j in cacheDia) delete cacheDia[j];
+    const onde=[d.logradouro,d.bairro].filter(Boolean).join(', ');
+    const exato = d.precisao==='coordenada do CEP' || d.precisao==='logradouro';
+    msg(`<b>${onde||d.cidade}</b>${onde?' — '+d.cidade:''}/${d.uf}<br>`+
+        `lat ${br(P.lat,4)} · lon ${br(P.lon,4)} — precisão: <b>${d.precisao}</b>.`+
+        (exato ? '' : ' <span class="al">Confira no satélite e ajuste se precisar.</span>'));
     sincronizar(); reconstruir(); if(P.mapa) carregarMapa();
   }catch(err){
-    msg('Não consegui consultar agora. Isso costuma acontecer em pré-visualização; '+
-        'publicado na Vercel funciona. Use os presets ou a latitude manual.');
+    msg(`Não consegui localizar (${err.message}). Use os presets ou informe `+
+        `latitude e longitude na mão — dá para tocar no número e digitar.`);
   }
 };
 
