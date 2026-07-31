@@ -110,7 +110,8 @@ function aplicarTerreno(){
   matChao.map = t; matChao.color.set(0xffffff); matChao.needsUpdate = true;
 }
 chao.rotation.x = -Math.PI/2; chao.position.y = -0.01; chao.receiveShadow = true; scene.add(chao);
-scene.add(new THREE.GridHelper(260, 130, 0x2a333f, 0x1e252e));
+const grade = new THREE.GridHelper(260, 130, 0x2a333f, 0x1e252e);
+scene.add(grade);
 
 const gCasa    = new THREE.Group(); scene.add(gCasa);
 const gModulos = new THREE.Group(); gCasa.add(gModulos);
@@ -216,6 +217,8 @@ function limparMapa(){
     planoMapa.material.dispose();
     planoMapa=null;
   }
+  if(typeof aplicarTerreno==='function' && !P.mapa) aplicarTerreno();
+  if(typeof grade!=='undefined') grade.visible=true;
   document.getElementById('credito').classList.remove('on');
 }
 async function carregarMapa(){
@@ -223,7 +226,7 @@ async function carregarMapa(){
   if(!P.mapa) return;
   const nota=document.getElementById('notaMapa');
   nota.innerHTML='Baixando imagem aérea…';
-  const z=P.mapaZ, T=4, S=256;
+  const z=P.mapaZ, T=6, S=256;
   const c=tileXY(P.lat,P.lon,z);
   const x0=Math.floor(c.x)-T/2, y0=Math.floor(c.y)-T/2;
   const cv=document.createElement('canvas'); cv.width=cv.height=S*T;
@@ -257,6 +260,11 @@ async function carregarMapa(){
   planoMapa.position.set(-dx, 0.006, -dy);
   planoMapa.receiveShadow=true;
   scene.add(planoMapa);
+  /* o piso procedural sairia por baixo do mapa — some com ele */
+  if(matChao.map){ matChao.map.dispose(); matChao.map=null; }
+  matChao.color.set(0x232a31); matChao.needsUpdate=true;
+  grade.visible=false;
+  enquadrar();
   const cred=document.getElementById('credito');
   cred.textContent='Imagem: Esri, Maxar, Earthstar Geographics';
   cred.classList.add('on');
@@ -1054,7 +1062,11 @@ chips($('#fix'), [['auto','Automático'],['gancho','Gancho'],['prisioneiro','Pri
   k=>P.fix===k, k=>{ P.fix=k; sincronizar(); montarModulos(); atualizarResumo(); });
 chips($('#terrenos'), [['grama','Grama'],['terra','Terra'],['asfalto','Asfalto'],
   ['concreto','Concreto'],['brita','Brita']],
-  k=>P.terreno===k, k=>{ P.terreno=k; aplicarTerreno(); sincronizar(); });
+  k=>P.terreno===k, k=>{
+    P.terreno=k;
+    if(P.mapa){ P.mapa=false; limparMapa(); }
+    aplicarTerreno(); sincronizar();
+  });
 chips($('#addObs'), Object.entries(OBSTIPOS).map(([k,v])=>[k,'＋ '+v.n,'add']),
   ()=>false, k=>novoObstaculo(k));
 chips($('#locais'), [['-23.32,-46.58','Mairiporã'],['-23.55,-46.63','São Paulo'],
@@ -1565,6 +1577,7 @@ function irParaVista(k){
 document.querySelectorAll('#viewbar button').forEach(b=>{
   b.onclick=()=>{
     const k=b.dataset.v;
+    if(k==='centro'){ enquadrar(); return; }
     if(k==='mover'){
       panMode=!panMode;
       b.classList.toggle('on', panMode);
