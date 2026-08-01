@@ -21,6 +21,7 @@ const P = {
   tipo:'ceramica', aguas:2, comp:12, larg:8, pd:3, incl:18, azi:0,
   ori:'retrato', faces:new Set([0]), gu:0.02, gv:0.02, ou:0.3, ov:0.3, max:40, tilt:22,
   modWp:620, modL:2465, modW:1134, modK:34.6,
+  casaX:0, casaZ:0,
   beiral:0.5, beiralH:0.2, terreno:'grama', murH:0.4, murW:0.15,
   fix:'auto',
   lat:-23.32, lon:-46.58, tz:-3, dia:172, hora:12, hsp:4.6,
@@ -201,6 +202,11 @@ const matCaixa  = new THREE.MeshStandardMaterial({color:0x2f6fa8, roughness:.55}
 const matTronco = new THREE.MeshStandardMaterial({color:0x5b4433, roughness:.95});
 const matFolha  = new THREE.MeshStandardMaterial({color:0x3f7a3a, roughness:.95, flatShading:true});
 const matPredio = new THREE.MeshStandardMaterial({map:TEX.predio.clone(), roughness:.8});
+
+/* ---------- conversão entre o referencial da casa e o mundo ---------- */
+const EIXO_Y = new THREE.Vector3(0,1,0);
+const paraMundo = v => v.clone().applyAxisAngle(EIXO_Y, gCasa.rotation.y).add(gCasa.position);
+const paraCasa  = v => v.clone().sub(gCasa.position).applyAxisAngle(EIXO_Y, -gCasa.rotation.y);
 
 /* ===================== imagem de satélite ===================== */
 let planoMapa=null;
@@ -399,8 +405,8 @@ function facesDeObstaculos(){
     /* posição e rotação expressas no referencial da casa */
     let cx = o.x, cz = o.z, ang = o.r*RAD;
     if(!noTelhado){
-      const c = Math.cos(-rot), s = Math.sin(-rot);
-      cx = o.x*c + o.z*s; cz = -o.x*s + o.z*c;
+      const l = paraCasa(new THREE.Vector3(o.x, 0, o.z));
+      cx = l.x; cz = l.z;
       ang = o.r*RAD - rot;
     }
     const topo = (noTelhado ? alturaTelhadoEm(o.x,o.z) : 0) + o.h;
@@ -517,7 +523,7 @@ function montarObstaculos(){
 
     const base = noTelhado ? alturaTelhadoEm(o.x,o.z) : 0;
     const v = new THREE.Vector3(o.x, base, o.z);
-    if(noTelhado) v.applyAxisAngle(new THREE.Vector3(0,1,0), gCasa.rotation.y);
+    if(noTelhado) v.copy(paraMundo(v)).setY(base + gCasa.position.y);
     g.position.copy(v);
     g.rotation.y = o.r*RAD + (noTelhado ? gCasa.rotation.y : 0);
     g.userData.obs = o.id;
@@ -635,7 +641,7 @@ function criarModulo(F, fi, fileira, coluna, cu, cv, mu, mv, usoV, retrato, tilt
 
   const q = gCasa.rotation.y, eixoY = new THREE.Vector3(0,1,0);
   CONT.normais.push(new THREE.Vector3(0,1,0).applyQuaternion(g.quaternion).applyAxisAngle(eixoY, q));
-  CONT.centros.push(pos.clone().applyAxisAngle(eixoY, q));
+  CONT.centros.push(paraMundo(pos));
   CONT.eixos.push(new THREE.Vector3(0,0,1).applyQuaternion(g.quaternion).applyAxisAngle(eixoY, q));
   CONT.meio.push(mv*0.35);
   CONT.faceDe.push(fi);
@@ -906,6 +912,7 @@ function posicionarSol(agora){
 }
 function reconstruir(){
   gCasa.rotation.y = Math.PI - P.azi*RAD;
+  gCasa.position.set(P.casaX, 0, P.casaZ);
   montarTelhado(); montarModulos(); montarObstaculos(); montarAux();
   sincronizarFaces(); atualizarResumo(); tSombra=0;
 }
@@ -1118,7 +1125,7 @@ const SL=[['comp','comp'],['larg','larg'],['pd','pd'],['incl','incl'],['azi','az
           ['gu','gu'],['gv','gv'],['ou','ou'],['ov','ov'],['max','max'],['tilt','tilt'],
           ['lat','lat'],['lon','lon'],['dia','dia'],['hsp','hsp'],
           ['mwp','modWp'],['ml','modL'],['mw','modW'],['mk','modK'],
-          ['bei','beiral'],['beh','beiralH'],['murh','murH'],['murw','murW']];
+          ['bei','beiral'],['beh','beiralH'],['casax','casaX'],['casaz','casaZ'],['murh','murH'],['murw','murW']];
 SL.forEach(([id,key])=>{
   document.getElementById(id).addEventListener('input', e=>{
     P[key]=+e.target.value;
@@ -1200,6 +1207,8 @@ function sincronizar(){
   $('#vLon').textContent=br(P.lon,2);
   $('#vDia').textContent=dataDoDia(P.dia);
   $('#vHsp').textContent=br(P.hsp,2);
+  $('#vCasaX').textContent=br(P.casaX,1)+' m';
+  $('#vCasaZ').textContent=br(P.casaZ,1)+' m';
   $('#vMurH').textContent=br(P.murH,2)+' m';
   $('#vMurW').textContent=br(P.murW,2)+' m';
   $('#notaMur').innerHTML = P.tipo==='laje'
@@ -1504,6 +1513,8 @@ cv.addEventListener('pointerdown',e=>{
   px=downX=e.clientX; py=downY=e.clientY; mov=0;
   cv.setPointerCapture(e.pointerId);
   if(medindo){ arr=false; return; }
+  if(moverCasa){ arrastoCasa=pegarCasa(e.clientX,e.clientY); arr=false;
+    cv.style.cursor='grabbing'; return; }
   if(panMode || e.button===2 || e.shiftKey){ arr=false; panDrag=true; return; }
   const pego = pegarObstaculo(e.clientX, e.clientY);
   if(pego){ arrastando=pego; arr=false; cv.style.cursor='grabbing'; return; }
@@ -1511,6 +1522,13 @@ cv.addEventListener('pointerdown',e=>{
 });
 cv.addEventListener('pointerup',e=>{
   cv.style.cursor='';
+  if(arrastoCasa){
+    arrastoCasa=null; arr=false;
+    document.getElementById('casax').value=P.casaX;
+    document.getElementById('casaz').value=P.casaZ;
+    reconstruir(); sincronizar();
+    return;
+  }
   if(panDrag){ panDrag=false; arr=false; return; }
   if(arrastando){
     if(mov<7){ obsSel=arrastando.idx; arrastando=null; listarObstaculos(); sincronizar(); }
@@ -1525,6 +1543,7 @@ cv.addEventListener('pointerup',e=>{
 });
 cv.addEventListener('pointermove',e=>{
   mov+=Math.abs(e.clientX-px)+Math.abs(e.clientY-py);
+  if(arrastoCasa){ moverCasaPara(e.clientX,e.clientY); px=e.clientX; py=e.clientY; return; }
   if(panDrag){ deslocarCena(-(e.clientX-px), -(e.clientY-py)); px=e.clientX; py=e.clientY; return; }
   if(arrastando){ px=e.clientX; py=e.clientY; moverArrasto(e.clientX,e.clientY); return; }
   if(!arr) return;
@@ -1553,7 +1572,7 @@ cv.addEventListener('touchmove',e=>{
 },{passive:true});
 cv.addEventListener('touchend',()=>{pinch=0; doisDedos=null;},{passive:true});
 function enquadrar(){
-  orb.alvo.set(0,P.pd*0.55+1,0);
+  orb.alvo.set(P.casaX, P.pd*0.55+1, P.casaZ);
   orb.raio=Math.max(16,Math.max(P.comp,P.larg,P.pd*1.4)*2.1);
   posicionaCamera();
 }
@@ -1570,7 +1589,7 @@ const VISTAS = {
 function irParaVista(k){
   const v=VISTAS[k]; if(!v) return;
   orb.theta=v.theta; orb.phi=v.phi;
-  orb.alvo.set(0, P.pd*0.5+0.5, 0);
+  orb.alvo.set(P.casaX, P.pd*0.5+0.5, P.casaZ);
   orb.raio=Math.max(14, Math.max(P.comp,P.larg,P.pd*1.3)*(k==='topo'?1.5:2.0));
   posicionaCamera();
 }
@@ -1578,6 +1597,15 @@ document.querySelectorAll('#viewbar button').forEach(b=>{
   b.onclick=()=>{
     const k=b.dataset.v;
     if(k==='centro'){ enquadrar(); return; }
+    if(k==='casa'){
+      moverCasa=!moverCasa;
+      b.classList.toggle('on', moverCasa);
+      if(moverCasa){
+        panMode=false; $('#btnMover').classList.remove('on');
+        medindo=false; $('#btnMedir').classList.remove('on'); limparMedida();
+      }
+      return;
+    }
     if(k==='mover'){
       panMode=!panMode;
       b.classList.toggle('on', panMode);
@@ -1601,7 +1629,7 @@ document.querySelectorAll('#viewbar button').forEach(b=>{
   };
 });
 
-let panMode=false;
+let panMode=false, moverCasa=false, arrastoCasa=null;
 function deslocarCena(dx, dy){
   const dir=new THREE.Vector3(); camera.getWorldDirection(dir);
   const dir2=new THREE.Vector3(dir.x,0,dir.z).normalize();
@@ -1609,6 +1637,23 @@ function deslocarCena(dx, dy){
   const esc=orb.raio*0.0018;
   orb.alvo.add(lado.multiplyScalar(dx*esc)).add(dir2.multiplyScalar(-dy*esc));
   posicionaCamera();
+}
+
+function pegarCasa(cx,cy){
+  const r=new THREE.Raycaster();
+  r.setFromCamera(new THREE.Vector2((cx/innerWidth)*2-1, -(cy/innerHeight)*2+1), camera);
+  const alvo=new THREE.Vector3();
+  if(!r.ray.intersectPlane(new THREE.Plane(EIXO_Y,0), alvo)) return null;
+  return {off:new THREE.Vector3(P.casaX-alvo.x, 0, P.casaZ-alvo.z)};
+}
+function moverCasaPara(cx,cy){
+  const r=new THREE.Raycaster();
+  r.setFromCamera(new THREE.Vector2((cx/innerWidth)*2-1, -(cy/innerHeight)*2+1), camera);
+  const alvo=new THREE.Vector3();
+  if(!r.ray.intersectPlane(new THREE.Plane(EIXO_Y,0), alvo)) return;
+  P.casaX=+(alvo.x+arrastoCasa.off.x).toFixed(2);
+  P.casaZ=+(alvo.z+arrastoCasa.off.z).toFixed(2);
+  gCasa.position.set(P.casaX,0,P.casaZ);
 }
 
 /* ===================== régua ===================== */
@@ -1700,9 +1745,8 @@ function soltarArrasto(){
   const o=OBS[arrastando.idx], g=arrastando.g;
   let x=g.position.x, z=g.position.z;
   if(OBSTIPOS[o.tipo].telhado){          // volta ao referencial da casa
-    const rot=-gCasa.rotation.y, c=Math.cos(rot), sn=Math.sin(rot);
-    const nx=x*c+z*sn, nz=-x*sn+z*c;
-    x=nx; z=nz;
+    const l=paraCasa(new THREE.Vector3(x,0,z));
+    x=l.x; z=l.z;
   }
   o.x=+x.toFixed(2); o.z=+z.toFixed(2);
   obsSel=arrastando.idx;
