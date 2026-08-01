@@ -26,7 +26,7 @@ const P = {
   fix:'auto',
   lat:-23.32, lon:-46.58, tz:-3, dia:172, hora:12, hsp:4.6,
   verSombra:true, verRota:true, verNorte:true, verFix:true,
-  mapa:false, mapaZ:19, mapaOp:1,
+  mapa:false, mapaZ:20, mapaFonte:'esri', mapaT:6,
   hspMes:null, fonteHsp:null
 };
 function aplicarModulo(){
@@ -203,6 +203,29 @@ const matTronco = new THREE.MeshStandardMaterial({color:0x5b4433, roughness:.95}
 const matFolha  = new THREE.MeshStandardMaterial({color:0x3f7a3a, roughness:.95, flatShading:true});
 const matPredio = new THREE.MeshStandardMaterial({map:TEX.predio.clone(), roughness:.8});
 
+const FONTES = {
+  esri: {
+    nome:'Esri World Imagery',
+    zmax:21,
+    credito:'Imagem: Esri, Maxar, Earthstar Geographics',
+    url:(z,x,y)=>`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery`+
+                 `/MapServer/tile/${z}/${y}/${x}`
+  },
+  google: {
+    nome:'Google (via Esri Clarity)',
+    zmax:21,
+    credito:'Imagem: Esri Clarity, Maxar',
+    url:(z,x,y)=>`https://clarity.maptiles.arcgis.com/arcgis/rest/services/World_Imagery`+
+                 `/MapServer/tile/${z}/${y}/${x}`
+  },
+  osm: {
+    nome:'OpenStreetMap (mapa de ruas)',
+    zmax:19,
+    credito:'© OpenStreetMap contributors',
+    url:(z,x,y)=>`https://tile.openstreetmap.org/${z}/${x}/${y}.png`
+  }
+};
+
 /* ---------- conversão entre o referencial da casa e o mundo ---------- */
 const EIXO_Y = new THREE.Vector3(0,1,0);
 const paraMundo = v => v.clone().applyAxisAngle(EIXO_Y, gCasa.rotation.y).add(gCasa.position);
@@ -232,7 +255,8 @@ async function carregarMapa(){
   if(!P.mapa) return;
   const nota=document.getElementById('notaMapa');
   nota.innerHTML='Baixando imagem aérea…';
-  const z=P.mapaZ, T=6, S=256;
+  const F=FONTES[P.mapaFonte]||FONTES.esri;
+  const z=Math.min(P.mapaZ, F.zmax), T=P.mapaT, S=256;
   const c=tileXY(P.lat,P.lon,z);
   const x0=Math.floor(c.x)-T/2, y0=Math.floor(c.y)-T/2;
   const cv=document.createElement('canvas'); cv.width=cv.height=S*T;
@@ -244,8 +268,7 @@ async function carregarMapa(){
       const im=new Image(); im.crossOrigin='anonymous';
       im.onload=()=>{ ctx.drawImage(im,i*S,j*S,S,S); res(true); };
       im.onerror=()=>res(false);
-      im.src=`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery`+
-             `/MapServer/tile/${z}/${y0+j}/${x0+i}`;
+      im.src=F.url(z, x0+i, y0+j);
     }));
   }
   const ok=(await Promise.all(jobs)).filter(Boolean).length;
@@ -259,7 +282,10 @@ async function carregarMapa(){
   const dx=(c.x-(x0+T/2))*S*mpp;      // quanto o ponto está a leste do centro do mosaico
   const dy=(c.y-(y0+T/2))*S*mpp;      // quanto está ao sul
   const tex=new THREE.CanvasTexture(cv);
-  tex.anisotropy=8;
+  tex.anisotropy=16;
+  tex.minFilter=THREE.LinearMipmapLinearFilter;
+  tex.magFilter=THREE.LinearFilter;
+  tex.generateMipmaps=true;
   planoMapa=new THREE.Mesh(new THREE.PlaneGeometry(lado,lado),
     new THREE.MeshStandardMaterial({map:tex, roughness:1}));
   planoMapa.rotation.x=-Math.PI/2;    // topo da imagem aponta para o norte (-Z)
@@ -272,11 +298,12 @@ async function carregarMapa(){
   grade.visible=false;
   enquadrar();
   const cred=document.getElementById('credito');
-  cred.textContent='Imagem: Esri, Maxar, Earthstar Geographics';
+  cred.textContent=F.credito;
   cred.classList.add('on');
-  nota.innerHTML=`Mosaico de ${br(lado,0)} m de lado · `+
-    `<b>${br(mpp,2)} m/pixel</b> · zoom ${z}. Gire o azimute até o telhado `+
-    `bater com o da foto. ${ok<T*T?'<span class="al">Algumas tiles falharam.</span>':''}`;
+  nota.innerHTML=`<b>${F.nome}</b> · zoom ${z} · <b>${br(mpp*100,0)} cm/pixel</b><br>`+
+    `Cobertura de ${br(lado,0)} m de lado (${T}×${T} tiles). `+
+    (z<P.mapaZ ? `<span class="al">Esta fonte vai até o zoom ${F.zmax}.</span> ` : '')+
+    `${ok<T*T?'<span class="al">'+(T*T-ok)+' tiles falharam — provavelmente sem cobertura neste zoom.</span>':''}`;
 }
 
 /* ===================== telhado ===================== */
@@ -1091,8 +1118,16 @@ chips($('#mapaTgl'), [['on','Mostrar satélite']], ()=>P.mapa, ()=>{
     document.getElementById('notaMapa').textContent=
       'Carrega a imagem aérea das coordenadas atuais como piso da cena.'; }
 });
-chips($('#mapaZoom'), [['17','Amplo'],['18','Médio'],['19','Detalhe']],
+chips($('#mapaZoom'), [['18','Amplo'],['19','Médio'],['20','Detalhe'],['21','Máximo']],
   k=>String(P.mapaZ)===k, k=>{ P.mapaZ=+k; sincronizar(); if(P.mapa) carregarMapa(); });
+chips($('#mapaFonte'), Object.entries(FONTES).map(([k,v])=>[k, v.nome.split(' ')[0]]),
+  k=>P.mapaFonte===k, k=>{ P.mapaFonte=k; sincronizar(); if(P.mapa) carregarMapa(); });
+document.getElementById('btnAmpliarMapa').onclick=()=>{
+  P.mapaT = P.mapaT>=12 ? 6 : P.mapaT+2;
+  document.getElementById('btnAmpliarMapa').textContent =
+    P.mapaT>=12 ? 'Voltar ao normal' : `Ampliar cobertura (${P.mapaT}×${P.mapaT})`;
+  if(P.mapa) carregarMapa();
+};
 chips($('#datas'), [[80,'21/mar'],[172,'21/jun'],[266,'23/set'],[355,'21/dez']].map(([n,t])=>[String(n),t]),
   k=>String(P.dia)===k, k=>{ P.dia=+k; $('#dia').value=k; sincronizar(); montarAux(); tSombra=0; });
 chips($('#show'), [['verSombra','Sombra'],['verRota','Trajetória'],['verNorte','Norte'],['verFix','Fixação']],
@@ -1256,6 +1291,8 @@ function sincronizar(){
   document.querySelectorAll('#mapaTgl .chip').forEach(c=>c.classList.toggle('on', P.mapa));
   document.querySelectorAll('#mapaZoom .chip').forEach(c=>
     c.classList.toggle('on', c.dataset.k===String(P.mapaZ)));
+  document.querySelectorAll('#mapaFonte .chip').forEach(c=>
+    c.classList.toggle('on', c.dataset.k===P.mapaFonte));
   $('#fixNota').textContent=FIXES[fixAtual()];
   $('#notaFileira').innerHTML = CONT.passoMin
     ? `Em plano, o afastamento mínimo para não sombrear ao meio-dia de inverno é `+
