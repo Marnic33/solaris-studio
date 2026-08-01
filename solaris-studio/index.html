@@ -27,6 +27,7 @@
   <button data-v="leste">Leste</button>
   <button data-v="oeste">Oeste</button>
   <button data-v="centro">Centro</button>
+  <button data-v="casa" id="btnCasa">Casa</button>
   <button data-v="mover" id="btnMover">Mover</button>
   <button data-v="medir" id="btnMedir">Régua</button>
 </div>
@@ -102,6 +103,14 @@
       <div class="row" style="margin-top:10px"><div class="name">Espessura da borda</div><div class="val" id="vBeh">0,20 m</div></div>
       <input type="range" id="beh" min="0.05" max="0.8" step="0.01" value="0.2">
       <div class="note" id="notaBei"></div>
+
+      <div class="lbl">Posição sobre o mapa</div>
+      <div class="row"><div class="name">Leste (+) / Oeste (−)</div><div class="val" id="vCasaX">0,0 m</div></div>
+      <input type="range" id="casax" min="-400" max="400" step="0.5" value="0">
+      <div class="row" style="margin-top:10px"><div class="name">Sul (+) / Norte (−)</div><div class="val" id="vCasaZ">0,0 m</div></div>
+      <input type="range" id="casaz" min="-400" max="400" step="0.5" value="0">
+      <div class="note">Ligue o satélite e use o botão <b>Casa</b> na barra lateral para arrastar
+        a construção até cima do telhado real. Depois ajuste no fino tocando nos números.</div>
 
       <div class="lbl">Orientação</div>
       <div class="chips" id="orientPre"></div>
