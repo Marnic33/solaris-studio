@@ -70,6 +70,7 @@
     <button data-p="entorno">Entorno</button>
     <button data-p="modulos">Módulos</button>
     <button data-p="sol">Sol</button>
+    <button data-p="eletrico">Elétrico</button>
     <button data-p="resumo">Resumo</button>
     <button data-p="ia">IA</button>
   </div>
@@ -264,6 +265,35 @@
         <button class="btn pri" id="png">Salvar imagem</button>
         <button class="btn" id="txt">Baixar resumo</button>
       </div>
+    </div>
+
+    <!-- ============ ELÉTRICO ============ -->
+    <div class="pane" id="p-eletrico">
+      <div class="lbl">Inversor</div>
+      <div class="chips" id="invLista"></div>
+      <div class="note" id="notaInv"></div>
+
+      <div class="lbl">Arranjo de strings</div>
+      <div id="strings"></div>
+
+      <div class="lbl">Temperatura de projeto</div>
+      <div class="row"><div class="name">Mínima (Voc a frio)</div><div class="val" id="vTmin">5 °C</div></div>
+      <input type="range" id="tmin" min="-5" max="20" step="1" value="5">
+      <div class="row" style="margin-top:10px"><div class="name">Ambiente máxima</div><div class="val" id="vTmax">32 °C</div></div>
+      <input type="range" id="tmax" min="20" max="45" step="1" value="32">
+
+      <div class="lbl">Perdas do sistema</div>
+      <div class="row"><div class="name">Sujeira</div><div class="val" id="vPsuj">3,0 %</div></div>
+      <input type="range" id="psuj" min="0" max="10" step="0.5" value="3">
+      <div class="row" style="margin-top:8px"><div class="name">Mismatch</div><div class="val" id="vPmis">2,0 %</div></div>
+      <input type="range" id="pmis" min="0" max="6" step="0.5" value="2">
+      <div class="row" style="margin-top:8px"><div class="name">Cabeamento</div><div class="val" id="vPcab">1,5 %</div></div>
+      <input type="range" id="pcab" min="0" max="6" step="0.5" value="1.5">
+      <div class="row" style="margin-top:8px"><div class="name">Reflexão (IAM)</div><div class="val" id="vPref">2,5 %</div></div>
+      <input type="range" id="pref" min="0" max="6" step="0.5" value="2.5">
+      <div class="row" style="margin-top:8px"><div class="name">Degradação + indisponib.</div><div class="val" id="vPdeg">1,0 %</div></div>
+      <input type="range" id="pdeg" min="0" max="5" step="0.5" value="1">
+      <div class="note" id="notaPR"></div>
     </div>
 
     <!-- ============ IA ============ -->
