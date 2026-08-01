@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import * as S from './nucleo/solar.js';
 import { buscarIrradiacao, buscarCEP } from './nucleo/dados.js';
+import * as E from './nucleo/eletrico.js';
 import './estilo.css';
 
 /* =========================================================================
@@ -22,6 +23,8 @@ const P = {
   ori:'retrato', faces:new Set([0]), gu:0.02, gv:0.02, ou:0.3, ov:0.3, max:40, tilt:22,
   modWp:620, modL:2465, modW:1134, modK:34.6,
   casaX:0, casaZ:0,
+  inversor:'auto', tMin:5, tMaxAmb:32,
+  perdas:{sujeira:3, mismatch:2, cabeamento:1.5, reflexao:2.5, degradacao:0.5, indisponibilidade:0.5},
   beiral:0.5, beiralH:0.2, terreno:'grama', murH:0.4, murW:0.15,
   fix:'auto',
   lat:-23.32, lon:-46.58, tz:-3, dia:172, hora:12, hsp:4.6,
@@ -1160,7 +1163,8 @@ const SL=[['comp','comp'],['larg','larg'],['pd','pd'],['incl','incl'],['azi','az
           ['gu','gu'],['gv','gv'],['ou','ou'],['ov','ov'],['max','max'],['tilt','tilt'],
           ['lat','lat'],['lon','lon'],['dia','dia'],['hsp','hsp'],
           ['mwp','modWp'],['ml','modL'],['mw','modW'],['mk','modK'],
-          ['bei','beiral'],['beh','beiralH'],['casax','casaX'],['casaz','casaZ'],['murh','murH'],['murw','murW']];
+          ['bei','beiral'],['beh','beiralH'],['casax','casaX'],['casaz','casaZ'],
+          ['tmin','tMin'],['tmax','tMaxAmb'],['murh','murH'],['murw','murW']];
 SL.forEach(([id,key])=>{
   document.getElementById(id).addEventListener('input', e=>{
     P[key]=+e.target.value;
@@ -1171,6 +1175,17 @@ SL.forEach(([id,key])=>{
     }
     aplicarModulo(); sincronizar(); reconstruir();
   });
+});
+[['psuj','sujeira'],['pmis','mismatch'],['pcab','cabeamento'],['pref','reflexao']]
+.forEach(([id,key])=>{
+  document.getElementById(id).addEventListener('input', e=>{
+    P.perdas[key]=+e.target.value; sincronizar(); atualizarResumo();
+  });
+});
+document.getElementById('pdeg').addEventListener('input', e=>{
+  const v=+e.target.value;
+  P.perdas.degradacao=v/2; P.perdas.indisponibilidade=v/2;
+  sincronizar(); atualizarResumo();
 });
 [['ox','x'],['oz','z'],['ol','l'],['op','p'],['oh','h'],['or','r']].forEach(([id,key])=>{
   document.getElementById(id).addEventListener('input', e=>{
@@ -1242,6 +1257,15 @@ function sincronizar(){
   $('#vLon').textContent=br(P.lon,2);
   $('#vDia').textContent=dataDoDia(P.dia);
   $('#vHsp').textContent=br(P.hsp,2);
+  $('#vTmin').textContent=P.tMin+' °C';
+  $('#vTmax').textContent=P.tMaxAmb+' °C';
+  $('#vPsuj').textContent=br(P.perdas.sujeira,1)+' %';
+  $('#vPmis').textContent=br(P.perdas.mismatch,1)+' %';
+  $('#vPcab').textContent=br(P.perdas.cabeamento,1)+' %';
+  $('#vPref').textContent=br(P.perdas.reflexao,1)+' %';
+  $('#vPdeg').textContent=br(P.perdas.degradacao+P.perdas.indisponibilidade,1)+' %';
+  document.querySelectorAll('#invLista .chip').forEach(c=>
+    c.classList.toggle('on', c.dataset.k===P.inversor));
   $('#vCasaX').textContent=br(P.casaX,1)+' m';
   $('#vCasaZ').textContent=br(P.casaZ,1)+' m';
   $('#vMurH').textContent=br(P.murH,2)+' m';
@@ -1315,6 +1339,39 @@ function atualizarHUD(s){
            : `SEM SOMBRA NOS MÓDULOS`);
 }
 
+/* ---------- estado elétrico derivado do arranjo ---------- */
+let ELE = {valido:false};
+function calcularEletrico(){
+  const n = CONT.mod;
+  if(!n){ ELE={valido:false}; return ELE; }
+  const modulo = E.parametrosModulo(P.modWp);
+  const potCC = n*P.modWp;
+  const inv = P.inversor==='auto'
+    ? E.sugerirInversor(potCC, potCC>8000)
+    : (E.INVERSORES.find(i=>i.id===P.inversor) || E.sugerirInversor(potCC));
+  const tCelMax = E.tempCelula(P.tMaxAmb, 1000, modulo.noct);
+  const arranjo = E.montarArranjo(n, modulo, inv, P.tMin, tCelMax);
+  ELE = {valido:true, modulo, inversor:inv, arranjo, potCC, tCelMax};
+  return ELE;
+}
+
+/* fator de desempenho de um mês, com a temperatura ambiente estimada */
+function tempAmbienteMes(m){
+  /* variação senoidal em torno da média, defasada para o hemisfério sul */
+  const media = 25 - Math.abs(P.lat)*0.25;
+  const amplitude = 4 + Math.abs(P.lat)*0.12;
+  return media + amplitude*Math.cos(2*Math.PI*(m-0)/12);
+}
+function prDoMes(m){
+  if(!ELE.valido) return 0.80;
+  const f = E.fatorDesempenho({
+    modulo: ELE.modulo, inversor: ELE.inversor, perdas: P.perdas,
+    tempAmbiente: tempAmbienteMes(m), irradiancia: 750,
+    fdi: ELE.arranjo.viavel ? ELE.arranjo.fdi : 1
+  });
+  return f.total;
+}
+
 function geracaoMensal(){
   const ref = hspPlano(Math.abs(P.lat), P.lat<0?0:180);
   const meses = new Array(12).fill(0);
@@ -1330,9 +1387,9 @@ function geracaoMensal(){
       if(P.hspMes){
         /* dado medido: usa a irradiação horizontal real e só transpõe pelo modelo */
         const razao = irradDiaC(DIA_REP[m], tilt, F.azi)/Math.max(0.01, irradDiaC(DIA_REP[m], 0, 0));
-        energia = kwp*P.hspMes[m]*razao*0.80*DIAS_MES[m];
+        energia = kwp*P.hspMes[m]*razao*prDoMes(m)*DIAS_MES[m];
       } else {
-        energia = kwp*P.hsp*(irradDiaC(DIA_REP[m], tilt, F.azi)/ref)*0.80*DIAS_MES[m];
+        energia = kwp*P.hsp*(irradDiaC(DIA_REP[m], tilt, F.azi)/ref)*prDoMes(m)*DIAS_MES[m];
       }
       meses[m] += energia*(1-perda);
     }
@@ -1359,8 +1416,14 @@ function desenharGrafico(){
   return {meses, total};
 }
 
+function PR_MEDIO(){
+  let s=0; for(let m=0;m<12;m++) s+=prDoMes(m);
+  return s/12;
+}
 function atualizarResumo(){
-  const kWp=CONT.mod*MOD.Wp/1000, PR=0.80;
+  calcularEletrico();
+  atualizarEletrico();
+  const kWp=CONT.mod*MOD.Wp/1000;
   $('#rKwp').innerHTML=br(kWp,2)+'<small>kWp</small>';
 
   let ger=0, gerSem=0, linhasF=[];
@@ -1371,7 +1434,7 @@ function atualizarResumo(){
     const f = fatorPlano(tilt, F.azi);
     const som = PERDAS.valido ? (PERDAS.porFace[i]||0) : 0;
     const kwpF = n*MOD.Wp/1000;
-    const bruta = kwpF*P.hsp*f*PR*30;
+    const bruta = kwpF*P.hsp*f*PR_MEDIO()*30;
     const gerF = bruta*(1-som);
     ger += gerF; gerSem += bruta;
     linhasF.push(`<tr><td>${F.nome} <span class="k">${br(F.azi,0)}° ${bussola(F.azi)}</span></td>`+
@@ -1396,7 +1459,7 @@ function atualizarResumo(){
     `${CONT.mod} módulos de ${P.modWp} W · <b>${br(CONT.mod*MOD.kg,0)} kg</b><br>`+
     `Geração estimada <b>${br(ger,0)} kWh/mês</b> — `+
     (P.hspMes ? `irradiação medida (${P.fonteHsp})` : `HSP ${br(P.hsp,2)} estimado`)+
-    `, desempenho ${Math.round(PR*100)}%`+
+    `, desempenho ${br(PR_MEDIO()*100,1)}%`+
     (PERDAS.valido && PERDAS.total>0.001
       ? `, já descontando <b>${br(PERDAS.total*100,1)}%</b> de sombra.` : '.')+`<br>`+
     `Inclinação ideal para a latitude: <b>${br(Math.abs(P.lat),0)}°</b> voltada ao `+
@@ -1803,6 +1866,59 @@ document.getElementById('abrir').onclick = ()=>{
   $('#abrir').classList.remove('on');
 };
 
+/* ===================== painel elétrico ===================== */
+function atualizarEletrico(){
+  const cx=document.getElementById('invLista');
+  if(!cx) return;
+
+  chips(cx, [['auto','Automático'], ...E.INVERSORES.map(i=>
+      [i.id, i.nome.replace('GoodWe ','').replace('Growatt ','')])],
+    k=>P.inversor===k, k=>{ P.inversor=k; atualizarResumo(); });
+
+  const nota=document.getElementById('notaInv');
+  const cxs=document.getElementById('strings');
+  if(!ELE.valido){
+    nota.textContent='Posicione módulos para dimensionar.';
+    cxs.innerHTML=''; return;
+  }
+  const i=ELE.inversor, a=ELE.arranjo;
+  nota.innerHTML=
+    `<b>${i.nome}</b> · ${br(i.ca/1000,2)} kW ${i.fases===3?'trifásico':'monofásico'} · `+
+    `${i.mppt} MPPT (${i.mppt*i.stringsPorMppt} entradas) · eficiência ${br(i.eficiencia*100,1)}%<br>`+
+    `MPPT de ${i.vMin} a ${i.vMax} V · máximo ${i.iMaxMppt} A por entrada.`;
+
+  if(!a.viavel){
+    cxs.innerHTML=`<div class="cartao alto"><h4>Arranjo inviável</h4><p>${a.motivo}</p></div>`;
+    return;
+  }
+  const cor = (a.fdi>1.35||a.fdi<0.85) ? 'medio' : '';
+  let h=`<div class="cartao ${cor}"><span class="tag">FDI ${br(a.fdi*100,0)}%</span>`+
+    `<h4>${a.strings} string${a.strings>1?'s':''} de ${a.comprimentos.join(' + ')} módulos</h4>`+
+    `<p>${br(a.potCC/1000,2)} kWp em CC para ${br(i.ca/1000,2)} kW em CA · `+
+    `${a.entradasUsadas} de ${a.entradasTotais} entradas · corrente ${a.correnteTotal} A.</p></div>`;
+  const v=a.validacao;
+  h+=`<table><thead><tr><th>Verificação</th><th>Valor</th><th>Limite</th></tr></thead><tbody>`+
+     `<tr><td>Voc a ${P.tMin} °C</td><td>${br(v.vocFrio,0)} V</td>`+
+     `<td>${i.vMax} V (${br(v.vocFrio/i.vMax*100,0)}%)</td></tr>`+
+     `<tr><td>Vmp a ${br(ELE.tCelMax,0)} °C</td><td>${br(v.vmpQuente,0)} V</td>`+
+     `<td>mín ${i.vMin} V</td></tr>`+
+     `<tr><td>Corrente por string</td><td>${br(ELE.modulo.imp,1)} A</td>`+
+     `<td>máx ${i.iMaxMppt} A</td></tr></tbody></table>`;
+  (a.avisos||[]).forEach(x=>{ h+=`<div class="cartao medio"><p>${x}</p></div>`; });
+  cxs.innerHTML=h;
+
+  const pr=PR_MEDIO();
+  const fv=E.fatorDesempenho({modulo:ELE.modulo, inversor:i, perdas:P.perdas,
+    tempAmbiente:tempAmbienteMes(1), irradiancia:750, fdi:a.fdi});
+  const soma=Object.values(P.perdas).reduce((x,y)=>x+y,0);
+  document.getElementById('notaPR').innerHTML=
+    `Desempenho médio anual <b>${br(pr*100,1)}%</b>.<br>`+
+    `Perdas somadas ${br(soma,1)}% · inversor ${br(i.eficiencia*100,1)}% · `+
+    `no mês mais quente a célula chega a <b>${br(fv.tempCelula,0)} °C</b>, `+
+    `custando ${br((1-fv.fatorTemp)*100,1)}% de potência.`+
+    (fv.cortePico>0.001?`<br><span class="al">Corte por sobrecarga: ${br(fv.cortePico*100,1)}%.</span>`:'');
+}
+
 /* ===================== análise por IA ===================== */
 function coletarProjeto(){
   const g = geracaoMensal();
@@ -1835,6 +1951,20 @@ function coletarProjeto(){
     faces,
     obstaculos: OBS.map(o=>({tipo:OBSTIPOS[o.tipo].n, sobre_telhado:OBSTIPOS[o.tipo].telhado,
       x_m:o.x, z_m:o.z, largura_m:o.l, profundidade_m:o.p, altura_m:o.h})),
+    eletrico: ELE.valido ? {
+      inversor: ELE.inversor.nome, potencia_ca_w: ELE.inversor.ca,
+      fases: ELE.inversor.fases, mppt: ELE.inversor.mppt,
+      arranjo_viavel: ELE.arranjo.viavel,
+      strings: ELE.arranjo.viavel ? ELE.arranjo.comprimentos : null,
+      fdi_pct: ELE.arranjo.viavel ? Math.round(ELE.arranjo.fdi*100) : null,
+      voc_frio_v: ELE.arranjo.viavel ? Math.round(ELE.arranjo.validacao.vocFrio) : null,
+      limite_voc_v: ELE.inversor.vMax,
+      vmp_quente_v: ELE.arranjo.viavel ? Math.round(ELE.arranjo.validacao.vmpQuente) : null,
+      limite_mppt_min_v: ELE.inversor.vMin,
+      avisos: ELE.arranjo.avisos || [],
+      pr_medio_pct: +(PR_MEDIO()*100).toFixed(1),
+      perdas_pct: P.perdas
+    } : null,
     perdas:{sombreamento_anual_pct: PERDAS.valido ? +(PERDAS.total*100).toFixed(1) : null,
       calculado: PERDAS.valido},
     geracao:{mensal_kwh:g.map(v=>Math.round(v)),
