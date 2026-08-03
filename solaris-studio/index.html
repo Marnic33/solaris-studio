@@ -161,6 +161,9 @@
       <div class="row" style="margin-top:10px"><div class="name">Peso</div><div class="val" id="vMK">34,6 kg</div></div>
       <input type="range" id="mk" min="10" max="60" step="0.1" value="34.6">
       <div class="note" id="notaMod"></div>
+      <div class="acts">
+        <button class="btn" id="btnDatasheetMod">Importar datasheet do módulo</button>
+      </div>
 
       <div class="lbl">Orientação padrão das novas fileiras</div>
       <div class="chips" id="ori"></div>
@@ -287,6 +290,11 @@
       <div class="lbl">Inversor</div>
       <div class="chips" id="invLista"></div>
       <div class="note" id="notaInv"></div>
+      <div class="acts">
+        <button class="btn" id="btnDatasheet">Importar datasheet</button>
+      </div>
+      <input type="file" id="arqDatasheet" accept="application/pdf,image/*" style="display:none">
+      <div id="saidaDatasheet"></div>
 
       <div class="lbl">Arranjo de strings</div>
       <div id="strings"></div>
