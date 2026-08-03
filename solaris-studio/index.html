@@ -193,12 +193,14 @@
 
     <!-- ============ SOL ============ -->
     <div class="pane" id="p-sol">
-      <div class="lbl">Buscar por CEP</div>
+      <div class="lbl">Endereço da obra</div>
       <div class="lin">
-        <input type="text" id="cep" placeholder="00000-000" maxlength="9" inputmode="numeric">
+        <input type="text" id="cep" placeholder="Rua Alarico Bérgamo, 123, São Paulo"
+               autocomplete="street-address" enterkeyhint="search">
         <button class="btn pri" id="btnCep">Buscar</button>
       </div>
-      <div class="note" id="cepMsg">Digite o CEP da obra para posicionar o sol no local certo.</div>
+      <div class="note" id="cepMsg">Digite rua e número. CEP também funciona, mas com número
+        a precisão é bem maior.</div>
       <div class="lbl">Coordenada exata (recomendado)</div>
       <div class="lin">
         <input type="text" id="coord" placeholder="-23.5432, -46.6291 ou link do Maps">
