@@ -3,7 +3,7 @@ import * as S from './nucleo/solar.js';
 import { buscarIrradiacao, buscarCEP } from './nucleo/dados.js';
 import * as E from './nucleo/eletrico.js';
 import * as CAT from './nucleo/catalogo.js';
-import { lerConta } from './nucleo/dados.js';
+import { lerConta, lerDatasheet } from './nucleo/dados.js';
 import './estilo.css';
 
 /* =========================================================================
@@ -1971,6 +1971,100 @@ function mostrarConta(d){
       `<div class="cartao"><p>Aplicado: limite de <b>${P.max} módulos</b>`+
       (opcoes.length?` e inversor <b>${opcoes[0].nome}</b>`:'')+
       `. Buscando o endereço no mapa…</p></div>`);
+  };
+}
+
+/* ===================== importar datasheet ===================== */
+function abrirDatasheet(){ const a=gid('arqDatasheet'); if(a && a.click) a.click(); }
+gid('btnDatasheet').onclick = abrirDatasheet;
+gid('btnDatasheetMod').onclick = abrirDatasheet;
+
+gid('arqDatasheet').onchange = async e=>{
+  const f=e.target.files && e.target.files[0];
+  if(!f) return;
+  const out=gid('saidaDatasheet');
+  out.innerHTML='<div class="note">Lendo o datasheet… PDFs longos levam alguns segundos.</div>';
+  gid('panel').classList.add('open');
+  try{
+    const eq=await lerDatasheet(f);
+    mostrarDatasheet(eq);
+  }catch(err){
+    out.innerHTML=`<div class="cartao alto"><h4>Não consegui ler</h4><p>${err.message}. `+
+      `Se for um PDF de catálogo com muitos modelos, tente recortar a página de `+
+      `especificações técnicas e enviar como imagem.</p></div>`;
+  }
+  e.target.value='';
+};
+
+function mostrarDatasheet(eq){
+  const inv = eq.categoria==='inversor';
+  const linhas = inv ? [
+    ['Potência CA', br(eq.ca/1000,2)+' kW'],
+    ['Potência CC máx', eq.ccMax?br(eq.ccMax/1000,2)+' kW':'—'],
+    ['Fases', eq.fases===3?'trifásico':'monofásico'],
+    ['MPPT', `${eq.mppt||'?'} (${(eq.mppt||0)*(eq.stringsPorMppt||1)} entradas)`],
+    ['Tensão CC máx', eq.vMax?eq.vMax+' V':'—'],
+    ['Faixa MPPT', (eq.vMin||'?')+' – '+(eq.vMax||'?')+' V'],
+    ['Corrente por MPPT', eq.iMaxMppt?eq.iMaxMppt+' A':'—'],
+    ['Eficiência', eq.eficiencia?br(eq.eficiencia*100,1)+'%':'—']
+  ] : [
+    ['Potência', eq.wp+' Wp'],
+    ['Dimensões', `${eq.comprimento} × ${eq.largura} mm`],
+    ['Peso', eq.peso?br(eq.peso,1)+' kg':'—'],
+    ['Voc / Vmp', `${eq.voc} / ${eq.vmp} V`],
+    ['Isc / Imp', `${eq.isc} / ${eq.imp} A`],
+    ['Coef. Voc', eq.coefVoc+' %/°C'],
+    ['Coef. potência', eq.coefP+' %/°C'],
+    ['NOCT', eq.noct?eq.noct+' °C':'—']
+  ];
+
+  let h=`<div class="cartao"><span class="tag">${(eq.confianca||'').toUpperCase()}</span>`+
+    `<h4>${eq.fabricante||''} ${eq.nome||eq.linha||''}</h4>`+
+    `<p>Identificado como <b>${inv?'inversor':'módulo'}</b>.</p></div>`+
+    `<table><tbody>`+linhas.map(l=>
+      `<tr><td>${l[0]}</td><td colspan="2">${l[1]}</td></tr>`).join('')+`</tbody></table>`;
+
+  (eq.avisos||[]).forEach(a=>{ h+=`<div class="cartao medio"><p>${a}</p></div>`; });
+  if(eq.observacoes) h+=`<div class="cartao"><h4>Observações</h4><p>${eq.observacoes}</p></div>`;
+
+  const faltando = inv && (!eq.vMax || !eq.vMin || !eq.iMaxMppt);
+  h+=`<div class="acts">`+
+     `<button class="btn ${faltando?'':'pri'}" id="salvarEq">Adicionar ao catálogo</button>`+
+     `<button class="btn" id="verJson">Ver JSON</button></div>`;
+  if(faltando) h+=`<div class="note"><span class="al">Faltam dados de tensão ou corrente.</span> `+
+     `Dá para salvar, mas a validação de string não vai funcionar direito.</div>`;
+
+  gid('saidaDatasheet').innerHTML=h;
+
+  gid('salvarEq').onclick=()=>{
+    CAT.salvarEquipamento(eq);
+    if(inv){ P.inversor=eq.id; }
+    else {
+      P.moduloId=eq.id;
+      P.modWp=eq.wp; P.modL=eq.comprimento; P.modW=eq.largura; P.modK=eq.peso||30;
+      ['mwp','ml','mw','mk'].forEach((id,i)=>{
+        const el=gid(id); if(el) el.value=[eq.wp,eq.comprimento,eq.largura,eq.peso||30][i];
+      });
+      aplicarModulo();
+    }
+    gid('saidaDatasheet').innerHTML=
+      `<div class="cartao"><h4>Adicionado</h4><p><b>${eq.fabricante} ${eq.nome||eq.linha}</b> `+
+      `entrou no catálogo e já está selecionado. Ele fica salvo neste navegador — `+
+      `use “Ver JSON” para levar ao catálogo do repositório.</p></div>`;
+    sincronizar(); reconstruir();
+  };
+
+  gid('verJson').onclick=()=>{
+    const limpo={...eq}; delete limpo.avisos; delete limpo.confianca;
+    delete limpo.observacoes; delete limpo.categoria;
+    const txt=JSON.stringify(limpo,null,2);
+    gid('saidaDatasheet').insertAdjacentHTML('beforeend',
+      `<div class="lbl">Para o catálogo</div>`+
+      `<div class="note" style="white-space:pre-wrap;font-family:'IBM Plex Mono',monospace;`+
+      `font-size:10.5px;max-height:220px;overflow:auto;border:1px solid var(--line);`+
+      `padding:10px">${txt.replace(/[<>]/g,'')}</div>`+
+      `<div class="note">Cole este bloco em <b>src/nucleo/catalogo.js</b>, na lista `+
+      `${inv?'INVERSORES':'MODULOS'}, para virar catálogo oficial de todos os projetos.</div>`);
   };
 }
 
