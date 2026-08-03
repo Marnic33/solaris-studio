@@ -1515,6 +1515,9 @@ function atualizarResumo(){
 }
 
 /* ===================== CEP ===================== */
+gid('cep').addEventListener('keydown', e=>{
+  if(e.key==='Enter'){ e.preventDefault(); gid('btnCep').click(); }
+});
 $('#btnCep').onclick = async ()=>{
   const termo=$('#cep').value.trim();
   const msg=t=>$('#cepMsg').innerHTML=t;
