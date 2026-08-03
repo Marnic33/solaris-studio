@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import * as S from './nucleo/solar.js';
 import { buscarIrradiacao, buscarCEP } from './nucleo/dados.js';
 import * as E from './nucleo/eletrico.js';
+import * as CAT from './nucleo/catalogo.js';
+import { lerConta } from './nucleo/dados.js';
 import './estilo.css';
 
 /* =========================================================================
@@ -23,7 +25,7 @@ const P = {
   ori:'retrato', faces:new Set([0]), gu:0.02, gv:0.02, ou:0.3, ov:0.3, max:40, tilt:22,
   modWp:620, modL:2465, modW:1134, modK:34.6,
   casaX:0, casaZ:0,
-  inversor:'auto', tMin:5, tMaxAmb:32,
+  inversor:'auto', moduloId:'jinko-620n', tMin:5, tMaxAmb:32,
   perdas:{sujeira:3, mismatch:2, cabeamento:1.5, reflexao:2.5, degradacao:0.5, indisponibilidade:0.5},
   beiral:0.5, beiralH:0.2, terreno:'grama', murH:0.4, murW:0.15,
   fix:'auto',
@@ -1084,9 +1086,11 @@ chips($('#aguas'), [['1','1 água'],['2','2 águas'],['4','4 águas']],
   });
 chips($('#orientPre'), [['0','Norte'],['45','NE'],['315','NO'],['90','Leste'],['270','Oeste']],
   k=>String(P.azi)===k, k=>{ P.azi=+k; $('#azi').value=k; sincronizar(); reconstruir(); });
-chips($('#modPre'), Object.entries(MODELOS).map(([k,v])=>[k, v.n]),
-  k=>String(P.modWp)===k && P.modL===MODELOS[k].l, k=>{
-    const m=MODELOS[k];
+chips($('#modPre'), CAT.MODULOS.map(m=>[m.id, `${m.fabricante.split(' ')[0]} ${m.wp}`]),
+  k=>P.moduloId===k, k=>{
+    const c=CAT.acharModulo(k); if(!c) return;
+    P.moduloId=k;
+    const m={wp:c.wp,l:c.comprimento,w:c.largura,k:c.peso};
     P.modWp=m.wp; P.modL=m.l; P.modW=m.w; P.modK=m.k;
     ['mwp','ml','mw','mk'].forEach((id,i)=>
       document.getElementById(id).value=[m.wp,m.l,m.w,m.k][i]);
@@ -1294,8 +1298,7 @@ function sincronizar(){
     `Área ${br(areaM,2)} m² · densidade <b>${br(P.modWp/areaM,0)} W/m²</b> · `+
     `carga <b>${br(P.modK/areaM,1)} kg/m²</b>. Mudar o modelo refaz todo o arranjo.`;
   document.querySelectorAll('#modPre .chip').forEach(c=>
-    c.classList.toggle('on', MODELOS[c.dataset.k] &&
-      MODELOS[c.dataset.k].wp===P.modWp && MODELOS[c.dataset.k].l===P.modL));
+    c.classList.toggle('on', c.dataset.k===P.moduloId));
   const o=OBS[obsSel];
   if(o){
     $('#ox').value=o.x; $('#oz').value=o.z; $('#ol').value=o.l;
@@ -1344,11 +1347,16 @@ let ELE = {valido:false};
 function calcularEletrico(){
   const n = CONT.mod;
   if(!n){ ELE={valido:false}; return ELE; }
-  const modulo = E.parametrosModulo(P.modWp);
+  const cat = CAT.acharModulo(P.moduloId);
+  const modulo = cat
+    ? {voc:cat.voc, vmp:cat.vmp, isc:cat.isc, imp:cat.imp,
+       coefVoc:cat.coefVoc, coefP:cat.coefP, noct:cat.noct, wp:cat.wp}
+    : E.parametrosModulo(P.modWp);
   const potCC = n*P.modWp;
+  const lista = CAT.inversoresPara(potCC, {trifasico: potCC>8000 ? true : null});
   const inv = P.inversor==='auto'
-    ? E.sugerirInversor(potCC, potCC>8000)
-    : (E.INVERSORES.find(i=>i.id===P.inversor) || E.sugerirInversor(potCC));
+    ? (lista[0] || CAT.INVERSORES[CAT.INVERSORES.length-1])
+    : (CAT.acharInversor(P.inversor) || lista[0] || CAT.INVERSORES[0]);
   const tCelMax = E.tempCelula(P.tMaxAmb, 1000, modulo.noct);
   const arranjo = E.montarArranjo(n, modulo, inv, P.tMin, tCelMax);
   ELE = {valido:true, modulo, inversor:inv, arranjo, potCC, tCelMax};
@@ -1488,23 +1496,18 @@ function atualizarResumo(){
 }
 
 /* ===================== CEP ===================== */
-$('#cep').addEventListener('input', e=>{
-  let v=e.target.value.replace(/\D/g,'').slice(0,8);
-  if(v.length>5) v=v.slice(0,5)+'-'+v.slice(5);
-  e.target.value=v;
-});
 $('#btnCep').onclick = async ()=>{
-  const cep=$('#cep').value.replace(/\D/g,'');
+  const termo=$('#cep').value.trim();
   const msg=t=>$('#cepMsg').innerHTML=t;
-  if(cep.length!==8){ msg('CEP incompleto — precisa de 8 dígitos.'); return; }
+  if(termo.length<4){ msg('Digite rua e número, ou um CEP.'); return; }
   msg('Buscando…');
   try{
-    const d = await buscarCEP(cep);
+    const d = await buscarCEP(termo);
     P.lat=d.lat; P.lon=d.lon;
     $('#lat').value=P.lat; $('#lon').value=P.lon;
     for(const j in cacheHSP) delete cacheHSP[j];
     for(const j in cacheDia) delete cacheDia[j];
-    const onde=[d.logradouro,d.bairro].filter(Boolean).join(', ');
+    const onde=d.endereco || [d.logradouro,d.bairro].filter(Boolean).join(', ');
     const exato = d.precisao==='coordenada do CEP' || d.precisao==='logradouro';
     msg(`<b>${onde||d.cidade}</b>${onde?' — '+d.cidade:''}/${d.uf}<br>`+
         `lat ${br(P.lat,4)} · lon ${br(P.lon,4)} — precisão: <b>${d.precisao}</b>.`+
@@ -1866,13 +1869,95 @@ document.getElementById('abrir').onclick = ()=>{
   $('#abrir').classList.remove('on');
 };
 
+/* ===================== conta de energia ===================== */
+let CONTA=null;
+document.getElementById('btnConta').onclick = ()=> document.getElementById('arqConta').click();
+document.getElementById('arqConta').onchange = async e=>{
+  const f=e.target.files && e.target.files[0];
+  if(!f) return;
+  const out=document.getElementById('saidaConta');
+  const b=document.getElementById('btnConta');
+  b.disabled=true; b.textContent='Lendo…';
+  out.innerHTML='<div class="note">Enviando a conta para leitura…</div>';
+  try{
+    const d=await lerConta(f);
+    CONTA=d;
+    mostrarConta(d);
+  }catch(err){
+    out.innerHTML=`<div class="cartao alto"><h4>Não consegui ler</h4><p>${err.message}. `+
+      `Verifique se a ANTHROPIC_API_KEY está configurada na Vercel e se a foto está legível.</p></div>`;
+  }
+  b.disabled=false; b.textContent='Enviar outra conta';
+  e.target.value='';
+};
+
+function mostrarConta(d){
+  const media = Number(d.media_kwh || d.consumo_mes_kwh || 0);
+  const hsp = P.hspMes ? P.hspMes.reduce((a,b)=>a+b,0)/12 : P.hsp;
+  const dim = CAT.dimensionarPorConsumo(media, hsp, P.modWp, PR_MEDIO());
+  const trif = d.tipo_ligacao==='trifasica';
+  const opcoes = CAT.inversoresPara(dim.potenciaKwp*1000, {trifasico: trif ? true : null}).slice(0,3);
+
+  let h=`<div class="cartao"><span class="tag">${(d.confianca||'').toUpperCase()}</span>`+
+    `<h4>${d.titular||'Conta lida'}</h4><p>`+
+    `${d.endereco||'—'}${d.bairro?', '+d.bairro:''}<br>`+
+    `${d.cidade||''}${d.uf?'/'+d.uf:''} · ${d.distribuidora||'distribuidora não identificada'}<br>`+
+    `Ligação ${d.tipo_ligacao||'—'} · classe ${d.classe||'—'}`+
+    (d.unidade_consumidora?` · UC ${d.unidade_consumidora}`:'')+`</p></div>`;
+
+  h+=`<div class="cartao"><h4>Consumo</h4><p>`+
+    `Mês faturado <b>${br(d.consumo_mes_kwh||0,0)} kWh</b>`+
+    (d.valor_total_rs?` · R$ ${br(d.valor_total_rs,2)}`:'')+`<br>`+
+    `Média do histórico <b>${br(media,0)} kWh/mês</b>`+
+    (d.tarifa_kwh_rs?` · tarifa R$ ${br(d.tarifa_kwh_rs,2)}/kWh`:'')+
+    (d.ja_tem_geracao?'<br><span class="al">A conta já indica geração própria.</span>':'')+
+    `</p></div>`;
+
+  if(Array.isArray(d.historico_kwh) && d.historico_kwh.length){
+    const max=Math.max(...d.historico_kwh.map(x=>+x.kwh||0),1);
+    h+=`<div class="lbl">Histórico</div>`+d.historico_kwh.map(x=>
+      `<div class="mes"><span class="m">${String(x.mes||'').slice(0,5)}</span>`+
+      `<div class="ba"><i style="width:${((+x.kwh||0)/max*100).toFixed(0)}%"></i></div>`+
+      `<span class="kw">${br(+x.kwh||0,0)}</span></div>`).join('');
+  }
+
+  h+=`<div class="cartao medio"><h4>Sistema sugerido</h4><p>`+
+    `<b>${dim.modulos} módulos</b> de ${P.modWp} W = <b>${br(dim.potenciaKwp,2)} kWp</b><br>`+
+    `Geração estimada ${br(dim.geracaoEstimada,0)} kWh/mês contra ${br(media,0)} de consumo `+
+    `(HSP ${br(hsp,2)}, desempenho ${br(PR_MEDIO()*100,0)}%).</p></div>`;
+
+  if(opcoes.length){
+    h+=`<div class="lbl">Inversores compatíveis</div><table><thead><tr>`+
+       `<th>Modelo</th><th>kW</th><th>FDI</th></tr></thead><tbody>`+
+       opcoes.map(i=>`<tr><td>${i.nome} <span class="k">${i.fases===3?'3F':'1F'}</span></td>`+
+       `<td>${br(i.ca/1000,1)}</td><td>${br(i.fdi*100,0)}%</td></tr>`).join('')+
+       `</tbody></table>`;
+  }
+
+  h+=`<div class="acts"><button class="btn pri" id="aplicarConta">Aplicar ao projeto</button></div>`;
+  document.getElementById('saidaConta').innerHTML=h;
+
+  document.getElementById('aplicarConta').onclick = ()=>{
+    P.max=Math.max(1, Math.min(150, dim.modulos));
+    document.getElementById('max').value=P.max;
+    if(opcoes.length){ P.inversor=opcoes[0].id; }
+    const alvo=[d.endereco,d.bairro,d.cidade,d.uf].filter(Boolean).join(', ');
+    if(alvo){ document.getElementById('cep').value=alvo;
+      document.getElementById('btnCep').click(); }
+    sincronizar(); reconstruir();
+    document.getElementById('saidaConta').insertAdjacentHTML('afterbegin',
+      `<div class="cartao"><p>Aplicado: limite de <b>${P.max} módulos</b>`+
+      (opcoes.length?` e inversor <b>${opcoes[0].nome}</b>`:'')+
+      `. Buscando o endereço no mapa…</p></div>`);
+  };
+}
+
 /* ===================== painel elétrico ===================== */
 function atualizarEletrico(){
   const cx=document.getElementById('invLista');
   if(!cx) return;
 
-  chips(cx, [['auto','Automático'], ...E.INVERSORES.map(i=>
-      [i.id, i.nome.replace('GoodWe ','').replace('Growatt ','')])],
+  chips(cx, [['auto','Automático'], ...CAT.INVERSORES.map(i=>[i.id, i.nome])],
     k=>P.inversor===k, k=>{ P.inversor=k; atualizarResumo(); });
 
   const nota=document.getElementById('notaInv');
