@@ -70,6 +70,7 @@
     <button data-p="entorno">Entorno</button>
     <button data-p="modulos">Módulos</button>
     <button data-p="sol">Sol</button>
+    <button data-p="conta">Conta</button>
     <button data-p="eletrico">Elétrico</button>
     <button data-p="resumo">Resumo</button>
     <button data-p="ia">IA</button>
@@ -265,6 +266,18 @@
         <button class="btn pri" id="png">Salvar imagem</button>
         <button class="btn" id="txt">Baixar resumo</button>
       </div>
+    </div>
+
+    <!-- ============ CONTA ============ -->
+    <div class="pane" id="p-conta">
+      <div class="lbl">Conta de energia</div>
+      <div class="note" style="margin-top:0">Envie foto ou PDF da conta. A IA lê o endereço,
+        o histórico de consumo e o tipo de ligação, e monta o sistema a partir disso.</div>
+      <div class="acts">
+        <button class="btn pri" id="btnConta">Enviar conta</button>
+      </div>
+      <input type="file" id="arqConta" accept="image/*,application/pdf" style="display:none">
+      <div id="saidaConta" style="margin-top:14px"></div>
     </div>
 
     <!-- ============ ELÉTRICO ============ -->
