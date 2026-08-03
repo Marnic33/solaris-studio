@@ -59,3 +59,26 @@ export async function lerConta(arquivo) {
   if (!r.ok) throw new Error(d.erro || `HTTP ${r.status}`);
   return d;
 }
+
+/** Converte um arquivo em base64 sem o prefixo data:. */
+function paraBase64(arquivo) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(',')[1]);
+    r.onerror = () => rej(new Error('não consegui ler o arquivo'));
+    r.readAsDataURL(arquivo);
+  });
+}
+
+/** Envia um datasheet para /api/datasheet e devolve o equipamento estruturado. */
+export async function lerDatasheet(arquivo) {
+  const dados = await paraBase64(arquivo);
+  const r = await fetch('/api/datasheet', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dados, tipo: arquivo.type })
+  });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.erro || `HTTP ${r.status}`);
+  return d;
+}
