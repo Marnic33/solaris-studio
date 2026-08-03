@@ -150,13 +150,13 @@ export const BATERIAS = [
 /* ==========================================================================
    Consultas
    ========================================================================== */
-export const acharModulo   = id => MODULOS.find(m => m.id === id);
-export const acharInversor = id => INVERSORES.find(i => i.id === id);
+export const acharModulo   = id => todosModulos().find(m => m.id === id);
+export const acharInversor = id => todosInversores().find(i => i.id === id);
 
 /** Inversores compatíveis com uma potência de arranjo, ordenados por aderência. */
 export function inversoresPara(potenciaCC, { trifasico = null, hibrido = null } = {}) {
   const alvo = potenciaCC / 1.15;
-  return INVERSORES
+  return todosInversores()
     .filter(i => !i.micro)
     .filter(i => trifasico === null || (trifasico ? i.fases === 3 : i.fases === 1))
     .filter(i => hibrido === null || (hibrido ? !!i.baterias : true))
@@ -176,3 +176,43 @@ export function dimensionarPorConsumo(consumoKwhMes, hsp, potenciaWp, pr = 0.80)
     geracaoPorModulo: +geracaoPorModulo.toFixed(1)
   };
 }
+
+/* ==========================================================================
+   Equipamentos importados de datasheet
+   Ficam no navegador do usuário. Para virarem catálogo oficial, copie o JSON
+   exportado e cole nas listas MODULOS / INVERSORES acima.
+   ========================================================================== */
+const CHAVE = 'solaris.equipamentos.v1';
+
+function ler() {
+  try { return JSON.parse(localStorage.getItem(CHAVE)) || { modulos: [], inversores: [] }; }
+  catch (_) { return { modulos: [], inversores: [] }; }
+}
+function gravar(d) {
+  try { localStorage.setItem(CHAVE, JSON.stringify(d)); return true; }
+  catch (_) { return false; }
+}
+
+export const importados = () => ler();
+
+/** Salva um equipamento vindo do datasheet. Substitui se o id já existir. */
+export function salvarEquipamento(eq) {
+  const d = ler();
+  const lista = eq.categoria === 'inversor' ? d.inversores : d.modulos;
+  const i = lista.findIndex(x => x.id === eq.id);
+  const registro = { ...eq, importadoEm: new Date().toISOString(), origem: 'datasheet' };
+  if (i >= 0) lista[i] = registro; else lista.push(registro);
+  gravar(d);
+  return registro;
+}
+
+export function removerEquipamento(id, categoria) {
+  const d = ler();
+  const chave = categoria === 'inversor' ? 'inversores' : 'modulos';
+  d[chave] = d[chave].filter(x => x.id !== id);
+  gravar(d);
+}
+
+/** Listas completas: catálogo do repositório + importados do usuário. */
+export const todosModulos   = () => [...MODULOS, ...ler().modulos];
+export const todosInversores = () => [...INVERSORES, ...ler().inversores];
