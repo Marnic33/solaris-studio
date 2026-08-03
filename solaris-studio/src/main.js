@@ -253,12 +253,12 @@ function limparMapa(){
   }
   if(typeof aplicarTerreno==='function' && !P.mapa) aplicarTerreno();
   if(typeof grade!=='undefined') grade.visible=true;
-  document.getElementById('credito').classList.remove('on');
+  gid('credito').classList.remove('on');
 }
 async function carregarMapa(){
   limparMapa();
   if(!P.mapa) return;
-  const nota=document.getElementById('notaMapa');
+  const nota=gid('notaMapa');
   nota.innerHTML='Baixando imagem aérea…';
   const F=FONTES[P.mapaFonte]||FONTES.esri;
   const z=Math.min(P.mapaZ, F.zmax), T=P.mapaT, S=256;
@@ -302,7 +302,7 @@ async function carregarMapa(){
   matChao.color.set(0x232a31); matChao.needsUpdate=true;
   grade.visible=false;
   enquadrar();
-  const cred=document.getElementById('credito');
+  const cred=gid('credito');
   cred.textContent=F.credito;
   cred.classList.add('on');
   nota.innerHTML=`<b>${F.nome}</b> · zoom ${z} · <b>${br(mpp*100,0)} cm/pixel</b><br>`+
@@ -989,7 +989,7 @@ function desfazer(){
   fecharSelecao(); refazer(); botaoDesfazer();
 }
 function botaoDesfazer(){
-  const b=document.getElementById('undo');
+  const b=gid('undo');
   if(b){ b.disabled = historico.length===0; b.title = `Desfazer (${historico.length})`; }
 }
 function refazer(){ montarModulos(); atualizarResumo(); tSombra=0; }
@@ -1056,7 +1056,26 @@ $('#restaurar') && ($('#restaurar').onclick = ()=>{
 });
 
 /* ===================== interface ===================== */
-function $(s){ return document.querySelector(s); }
+function $(s){ return document.querySelector(s) || STUB; }
+/* Elemento fantasma: absorve atribuições quando a peça não existe no HTML.
+   Evita que uma parte faltando (deploy parcial) derrube a aplicação inteira. */
+const STUB = new Proxy({}, {
+  get: (_, k) => (k === 'classList' ? {add(){},remove(){},toggle(){},contains:()=>false}
+              : k === 'style' ? {}
+              : k === 'dataset' ? {}
+              : k === 'value' ? ''
+              : k === 'textContent' || k === 'innerHTML' ? ''
+              : typeof k === 'string' && k.startsWith('on') ? null
+              : ()=>{}),
+  set: () => true
+});
+const gid = id => document.getElementById(id) || STUB;
+/* liga um handler só se o elemento existir — evita que uma peça faltando derrube tudo */
+function liga(id, evento, fn){
+  const el = document.getElementById(id);
+  if(el) el[evento] = fn;
+  return el;
+}
 const br=(n,d)=>Number(n).toLocaleString('pt-BR',{minimumFractionDigits:d||0,maximumFractionDigits:d||0});
 const ROSA=['N','NNE','NE','ENE','L','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
 const bussola=a=>ROSA[Math.round(((a%360)+360)%360/22.5)%16];
@@ -1122,16 +1141,16 @@ chips($('#locais'), [['-23.32,-46.58','Mairiporã'],['-23.55,-46.63','São Paulo
 chips($('#mapaTgl'), [['on','Mostrar satélite']], ()=>P.mapa, ()=>{
   P.mapa=!P.mapa; sincronizar();
   if(P.mapa) carregarMapa(); else { limparMapa();
-    document.getElementById('notaMapa').textContent=
+    gid('notaMapa').textContent=
       'Carrega a imagem aérea das coordenadas atuais como piso da cena.'; }
 });
 chips($('#mapaZoom'), [['18','Amplo'],['19','Médio'],['20','Detalhe'],['21','Máximo']],
   k=>String(P.mapaZ)===k, k=>{ P.mapaZ=+k; sincronizar(); if(P.mapa) carregarMapa(); });
 chips($('#mapaFonte'), Object.entries(FONTES).map(([k,v])=>[k, v.nome.split(' ')[0]]),
   k=>P.mapaFonte===k, k=>{ P.mapaFonte=k; sincronizar(); if(P.mapa) carregarMapa(); });
-document.getElementById('btnAmpliarMapa').onclick=()=>{
+gid('btnAmpliarMapa').onclick = ()=>{
   P.mapaT = P.mapaT>=12 ? 6 : P.mapaT+2;
-  document.getElementById('btnAmpliarMapa').textContent =
+  gid('btnAmpliarMapa').textContent =
     P.mapaT>=12 ? 'Voltar ao normal' : `Ampliar cobertura (${P.mapaT}×${P.mapaT})`;
   if(P.mapa) carregarMapa();
 };
@@ -1186,7 +1205,7 @@ SL.forEach(([id,key])=>{
     P.perdas[key]=+e.target.value; sincronizar(); atualizarResumo();
   });
 });
-document.getElementById('pdeg').addEventListener('input', e=>{
+gid('pdeg').addEventListener('input', e=>{
   const v=+e.target.value;
   P.perdas.degradacao=v/2; P.perdas.indisponibilidade=v/2;
   sincronizar(); atualizarResumo();
@@ -1539,12 +1558,12 @@ function lerCoordenadas(txt){
   }
   return null;
 }
-document.getElementById('btnCoord').onclick = ()=>{
-  const msg=t=>document.getElementById('coordMsg').innerHTML=t;
-  const c=lerCoordenadas(document.getElementById('coord').value);
+gid('btnCoord').onclick = ()=>{
+  const msg=t=>gid('coordMsg').innerHTML=t;
+  const c=lerCoordenadas(gid('coord').value);
   if(!c){ msg('<span class="al">Não reconheci.</span> Cole algo como '+
     '<b>-23.5432, -46.6291</b> ou o link inteiro do Google Maps.'); return; }
-  const sl=document.getElementById('lat'), sn=document.getElementById('lon');
+  const sl=gid('lat'), sn=gid('lon');
   const lat=Math.min(+sl.max, Math.max(+sl.min, c.lat));
   const lon=Math.min(+sn.max, Math.max(+sn.min, c.lon));
   const cortou = (lat!==c.lat || lon!==c.lon);
@@ -1558,8 +1577,8 @@ document.getElementById('btnCoord').onclick = ()=>{
   if(!P.mapa){ P.mapa=true; sincronizar(); }
   carregarMapa();
 };
-document.getElementById('coord').addEventListener('keydown', e=>{
-  if(e.key==='Enter'){ e.preventDefault(); document.getElementById('btnCoord').click(); }
+gid('coord').addEventListener('keydown', e=>{
+  if(e.key==='Enter'){ e.preventDefault(); gid('btnCoord').click(); }
 });
 
 /* ===================== abas / painel ===================== */
@@ -1568,14 +1587,14 @@ document.querySelectorAll('#tabs button').forEach(b=>{
     document.querySelectorAll('#tabs button').forEach(x=>x.classList.remove('on'));
     document.querySelectorAll('.pane').forEach(x=>x.classList.remove('on'));
     b.classList.add('on');
-    document.getElementById('p-'+b.dataset.p).classList.add('on');
+    gid('p-'+b.dataset.p).classList.add('on');
     $('#panel').classList.add('open');
   };
 });
 $('#grip').addEventListener('click',()=>$('#panel').classList.toggle('open'));
 
-document.getElementById('btnSombra').onclick = ()=>{
-  const b=document.getElementById('btnSombra');
+gid('btnSombra').onclick = ()=>{
+  const b=gid('btnSombra');
   b.textContent='Calculando…'; b.disabled=true;
   setTimeout(()=>{
     const t0=performance.now();
@@ -1586,11 +1605,11 @@ document.getElementById('btnSombra').onclick = ()=>{
     $('#notaSombra').innerHTML += ` <span style="opacity:.6">(${ms} ms)</span>`;
   }, 60);
 };
-document.getElementById('undo').onclick = desfazer;
+gid('undo').onclick = desfazer;
 const VELS=[0.5,1,2,4,8,16]; let iVel=1;
-document.getElementById('vel').onclick=()=>{
+gid('vel').onclick = ()=>{
   iVel=(iVel+1)%VELS.length;
-  document.getElementById('vel').textContent=VELS[iVel]+'×';
+  gid('vel').textContent=VELS[iVel]+'×';
 };
 let tocando=false;
 $('#play').onclick=()=>{
@@ -1627,8 +1646,8 @@ cv.addEventListener('pointerup',e=>{
   cv.style.cursor='';
   if(arrastoCasa){
     arrastoCasa=null; arr=false;
-    document.getElementById('casax').value=P.casaX;
-    document.getElementById('casaz').value=P.casaZ;
+    gid('casax').value=P.casaX;
+    gid('casaz').value=P.casaZ;
     reconstruir(); sincronizar();
     return;
   }
@@ -1858,12 +1877,12 @@ function soltarArrasto(){
 }
 
 /* ===================== minimizar painel ===================== */
-document.getElementById('fechar').onclick = e=>{
+gid('fechar').onclick = e=>{
   e.stopPropagation();
   $('#panel').classList.add('oculto');
   $('#abrir').classList.add('on');
 };
-document.getElementById('abrir').onclick = ()=>{
+gid('abrir').onclick = ()=>{
   $('#panel').classList.remove('oculto');
   $('#panel').classList.add('open');
   $('#abrir').classList.remove('on');
@@ -1871,12 +1890,12 @@ document.getElementById('abrir').onclick = ()=>{
 
 /* ===================== conta de energia ===================== */
 let CONTA=null;
-document.getElementById('btnConta').onclick = ()=> document.getElementById('arqConta').click();
-document.getElementById('arqConta').onchange = async e=>{
+liga('btnConta','onclick', ()=>{ const a=gid('arqConta'); if(a) a.click(); });
+liga('arqConta','onchange', async e=>{
   const f=e.target.files && e.target.files[0];
   if(!f) return;
-  const out=document.getElementById('saidaConta');
-  const b=document.getElementById('btnConta');
+  const out=gid('saidaConta');
+  const b=gid('btnConta');
   b.disabled=true; b.textContent='Lendo…';
   out.innerHTML='<div class="note">Enviando a conta para leitura…</div>';
   try{
@@ -1889,7 +1908,7 @@ document.getElementById('arqConta').onchange = async e=>{
   }
   b.disabled=false; b.textContent='Enviar outra conta';
   e.target.value='';
-};
+});
 
 function mostrarConta(d){
   const media = Number(d.media_kwh || d.consumo_mes_kwh || 0);
@@ -1935,17 +1954,17 @@ function mostrarConta(d){
   }
 
   h+=`<div class="acts"><button class="btn pri" id="aplicarConta">Aplicar ao projeto</button></div>`;
-  document.getElementById('saidaConta').innerHTML=h;
+  gid('saidaConta').innerHTML=h;
 
-  document.getElementById('aplicarConta').onclick = ()=>{
+  gid('aplicarConta').onclick = ()=>{
     P.max=Math.max(1, Math.min(150, dim.modulos));
-    document.getElementById('max').value=P.max;
+    gid('max').value=P.max;
     if(opcoes.length){ P.inversor=opcoes[0].id; }
     const alvo=[d.endereco,d.bairro,d.cidade,d.uf].filter(Boolean).join(', ');
-    if(alvo){ document.getElementById('cep').value=alvo;
-      document.getElementById('btnCep').click(); }
+    if(alvo){ gid('cep').value=alvo;
+      gid('btnCep').click(); }
     sincronizar(); reconstruir();
-    document.getElementById('saidaConta').insertAdjacentHTML('afterbegin',
+    gid('saidaConta').insertAdjacentHTML('afterbegin',
       `<div class="cartao"><p>Aplicado: limite de <b>${P.max} módulos</b>`+
       (opcoes.length?` e inversor <b>${opcoes[0].nome}</b>`:'')+
       `. Buscando o endereço no mapa…</p></div>`);
@@ -1954,14 +1973,14 @@ function mostrarConta(d){
 
 /* ===================== painel elétrico ===================== */
 function atualizarEletrico(){
-  const cx=document.getElementById('invLista');
+  const cx=gid('invLista');
   if(!cx) return;
 
   chips(cx, [['auto','Automático'], ...CAT.INVERSORES.map(i=>[i.id, i.nome])],
     k=>P.inversor===k, k=>{ P.inversor=k; atualizarResumo(); });
 
-  const nota=document.getElementById('notaInv');
-  const cxs=document.getElementById('strings');
+  const nota=gid('notaInv');
+  const cxs=gid('strings');
   if(!ELE.valido){
     nota.textContent='Posicione módulos para dimensionar.';
     cxs.innerHTML=''; return;
@@ -1996,7 +2015,7 @@ function atualizarEletrico(){
   const fv=E.fatorDesempenho({modulo:ELE.modulo, inversor:i, perdas:P.perdas,
     tempAmbiente:tempAmbienteMes(1), irradiancia:750, fdi:a.fdi});
   const soma=Object.values(P.perdas).reduce((x,y)=>x+y,0);
-  document.getElementById('notaPR').innerHTML=
+  gid('notaPR').innerHTML=
     `Desempenho médio anual <b>${br(pr*100,1)}%</b>.<br>`+
     `Perdas somadas ${br(soma,1)}% · inversor ${br(i.eficiencia*100,1)}% · `+
     `no mês mais quente a célula chega a <b>${br(fv.tempCelula,0)} °C</b>, `+
@@ -2124,13 +2143,13 @@ function renderIA(txt){
   $('#saidaIA').innerHTML=h;
 }
 
-document.getElementById('btnIA').onclick = async ()=>{
-  const b=document.getElementById('btnIA');
+gid('btnIA').onclick = async ()=>{
+  const b=gid('btnIA');
   if(!CONT.mod){ $('#saidaIA').innerHTML='<div class="cartao"><p>Posicione módulos antes de analisar.</p></div>'; return; }
   b.disabled=true; b.textContent='Analisando…';
   $('#saidaIA').innerHTML='<div class="note">Enviando o resumo técnico da simulação…</div>';
   try{
-    const txt=await chamarIA(montarPrompt(document.getElementById('perguntaIA').value.trim()));
+    const txt=await chamarIA(montarPrompt(gid('perguntaIA').value.trim()));
     renderIA(txt);
   }catch(err){
     $('#saidaIA').innerHTML=
@@ -2143,19 +2162,19 @@ document.getElementById('btnIA').onclick = async ()=>{
 };
 
 /* ===================== irradiação medida ===================== */
-document.getElementById('btnIrrad').onclick = async ()=>{
-  const b=document.getElementById('btnIrrad'), nota=document.getElementById('notaIrrad');
+gid('btnIrrad').onclick = async ()=>{
+  const b=gid('btnIrrad'), nota=gid('notaIrrad');
   b.disabled=true; b.textContent='Consultando…';
   try{
     const d=await buscarIrradiacao(P.lat.toFixed(4), P.lon.toFixed(4));
     P.hspMes=d.mensal; P.fonteHsp=d.fonte;
-    P.hsp=d.media; document.getElementById('hsp').value=d.media;
+    P.hsp=d.media; gid('hsp').value=d.media;
     nota.innerHTML=`<b>${d.fonte}</b><br>Média anual <b>${br(d.media,2)} kWh/m²/dia</b> · `+
       `mínimo ${br(Math.min(...d.mensal),2)} · máximo ${br(Math.max(...d.mensal),2)}.<br>`+
       `A geração mensal passou a usar a irradiação horizontal medida, transposta para o `+
       `plano de cada água pelo modelo. <span id="limparIrrad" style="color:var(--amber);`+
       `cursor:pointer;text-decoration:underline">voltar ao HSP manual</span>`;
-    document.getElementById('limparIrrad').onclick=()=>{
+    gid('limparIrrad').onclick=()=>{
       P.hspMes=null; P.fonteHsp=null;
       nota.textContent='Voltou ao HSP manual.'; atualizarResumo();
     };
