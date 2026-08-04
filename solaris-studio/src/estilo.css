@@ -180,3 +180,8 @@
     #viewbar{right:426px} #abrir{right:16px;bottom:16px}
     #panel.oculto{transform:translateX(120%) !important}
   }
+
+/* campos da aba Projeto */
+#p-projeto input[type=text]{margin-bottom:2px}
+#pjLista table td{vertical-align:top}
+#pjLista .chip{padding:5px 9px;font-size:11px}
