@@ -1953,6 +1953,23 @@ gid('abrir').onclick = ()=>{
 /* ===================== projeto: salvar e carregar ===================== */
 let projetoAtual = {id:null, nome:'', cliente:'', data:'', nota:''};
 
+/* Checagem de integridade: se src/nucleo/projetos.js não for o módulo certo,
+   avisa em bom português em vez de estourar um erro críptico. */
+const PJ_OK = typeof PJ.salvarProjeto === 'function'
+           && typeof PJ.listarProjetos === 'function';
+if(!PJ_OK){
+  console.error('Solaris: src/nucleo/projetos.js não exporta as funções esperadas.');
+}
+function exigirPJ(){
+  if(PJ_OK) return true;
+  gid('pjMsg').innerHTML =
+    '<span class="al">O arquivo src/nucleo/projetos.js não é o correto.</span> '+
+    'Ele deve começar com <b>const CHAVE = \'solaris.projetos.v1\'</b>. '+
+    'Se começar com <b>const TABELA</b>, esse é o arquivo de API — ele vai em '+
+    '<b>api/projetos.js</b>, e os dois foram trocados.';
+  return false;
+}
+
 /* Estado serializável da simulação. Sets e objetos viram estruturas simples. */
 function capturarEstado(){
   return {
@@ -2012,6 +2029,7 @@ function montarProjeto(){
 }
 
 gid('pjSalvar').onclick = async ()=>{
+  if(!exigirPJ()) return;
   try{
     const p = PJ.salvarProjeto(montarProjeto());
     projetoAtual = {id:p.id, nome:p.nome};
@@ -2033,6 +2051,7 @@ gid('pjNovo').onclick = ()=>{
 };
 
 function listarProjetos(){
+  if(!PJ_OK){ exigirPJ(); return; }
   const lista = PJ.listarProjetos();
   const cx = gid('pjLista');
   if(!lista.length){ cx.innerHTML='<div class="note">Nenhum projeto salvo ainda.</div>'; return; }
@@ -2061,12 +2080,13 @@ function listarProjetos(){
 }
 
 gid('pjExportar').onclick = ()=>{
+  if(!exigirPJ()) return;
   const p = montarProjeto();
   if(!p.id) p.id = 'projeto-'+Date.now().toString(36);
   PJ.exportarArquivo(p);
   gid('pjMsg').textContent='Arquivo gerado. Guarde junto da proposta do cliente.';
 };
-gid('pjImportar').onclick = ()=> gid('pjArquivo').click();
+gid('pjImportar').onclick = ()=>{ if(exigirPJ()) gid('pjArquivo').click(); };
 gid('pjArquivo').onchange = async e=>{
   const f=e.target.files && e.target.files[0]; if(!f) return;
   try{
