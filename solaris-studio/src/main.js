@@ -572,8 +572,8 @@ function dentro(poly,x,y){
   }
   return d;
 }
-let CONT = {mod:0, porFace:[], trilho:0, fix:0, centros:[], normais:[], eixos:[], meio:[],
-            faceDe:[], sombreados:0, incid:0, passoMin:0, fileiras:0};
+let CONT = {mod:0, porFace:[], trilho:0, fix:0, triangulos:0, centros:[], normais:[],
+            eixos:[], meio:[], faceDe:[], sombreados:0, incid:0, passoMin:0, fileiras:0};
 let PERDAS = {valido:false, total:0, porFace:[], porFaceMes:null, porModulo:[], horas:0};
 let malhasModulo = [];
 
@@ -585,8 +585,8 @@ function montarModulos(){
     }
   });
   malhasModulo = [];
-  CONT = {mod:0, porFace:FACES.map(()=>0), trilho:0, fix:0, centros:[], normais:[],
-          eixos:[], meio:[], faceDe:[],
+  CONT = {mod:0, porFace:FACES.map(()=>0), trilho:0, fix:0, triangulos:0,
+          centros:[], normais:[], eixos:[], meio:[], faceDe:[],
           sombreados:0, incid:0, passoMin:0, fileiras:0};
   PERDAS.valido = false;
 
@@ -730,8 +730,9 @@ function criarFixacao(F, fi, colunas, vPos, usoV, mu, mv, tilt){
         ch.position.copy(ptF(F,uu,vv,SAPATA.h+0.006));
         ch.castShadow=true; gFix.add(ch);
       }
-      CONT.fix += 2;
+      CONT.fix += 2;               // duas sapatas por triângulo
     }
+    CONT.triangulos += nTri;
     if(!P.verFix) CONT.fix += nTri*2;
 
     /* trilhos apoiados sobre os perfis A, a 1/4 e 3/4 da rampa */
@@ -1399,32 +1400,46 @@ function prDoMes(m){
   return f.total;
 }
 
-function geracaoMensal(){
-  const ref = hspPlano(Math.abs(P.lat), P.lat<0?0:180);
+/**
+ * Geração mensal — FONTE ÚNICA de energia do simulador.
+ *
+ * O HSP informado (manual ou medido) é sempre irradiação no plano HORIZONTAL.
+ * A transposição para o plano de cada água usa a razão entre a irradiação
+ * modelada no plano inclinado e a modelada no horizontal, no mesmo dia.
+ * Nunca dividir pelo plano ideal aqui: isso trocaria a referência e inflaria
+ * o resultado pelo fator ideal/horizontal (~6% em São Paulo).
+ *
+ * Devolve { meses[12], porFace: [{meses[12], bruta[12]}], total, media }.
+ */
+function calcularGeracao(){
   const meses = new Array(12).fill(0);
-  if(ref<=0) return meses;
+  const brutos = new Array(12).fill(0);
+  const porFace = FACES.map(()=>({meses:new Array(12).fill(0), total:0, bruta:0}));
+
   FACES.forEach((F,i)=>{
     const n = CONT.porFace[i]||0; if(!n) return;
     const tilt = F.plano ? P.tilt : F.tilt;
     const kwp = n*MOD.Wp/1000;
     for(let m=0;m<12;m++){
+      const horizontal = Math.max(0.01, irradDiaC(DIA_REP[m], 0, 0));
+      const noPlano = irradDiaC(DIA_REP[m], tilt, F.azi);
+      const hspMes = P.hspMes ? P.hspMes[m] : P.hsp;
+      const bruta = kwp*hspMes*(noPlano/horizontal)*prDoMes(m)*DIAS_MES[m];
       const perda = (PERDAS.valido && PERDAS.porFaceMes && PERDAS.porFaceMes[i])
         ? PERDAS.porFaceMes[i][m] : 0;
-      let energia;
-      if(P.hspMes){
-        /* dado medido: usa a irradiação horizontal real e só transpõe pelo modelo */
-        const razao = irradDiaC(DIA_REP[m], tilt, F.azi)/Math.max(0.01, irradDiaC(DIA_REP[m], 0, 0));
-        energia = kwp*P.hspMes[m]*razao*prDoMes(m)*DIAS_MES[m];
-      } else {
-        energia = kwp*P.hsp*(irradDiaC(DIA_REP[m], tilt, F.azi)/ref)*prDoMes(m)*DIAS_MES[m];
-      }
-      meses[m] += energia*(1-perda);
+      const liquida = bruta*(1-perda);
+      meses[m] += liquida; brutos[m] += bruta;
+      porFace[i].meses[m] += liquida;
+      porFace[i].total += liquida; porFace[i].bruta += bruta;
     }
   });
-  return meses;
+  const total = meses.reduce((a,b)=>a+b,0);
+  return {meses, brutos, porFace, total, media: total/12,
+          bruta: brutos.reduce((a,b)=>a+b,0)};
 }
+const geracaoMensal = () => calcularGeracao().meses;
 function desenharGrafico(){
-  const meses = geracaoMensal();
+  const meses = calcularGeracao().meses;
   const max = Math.max(...meses, 1);
   const total = meses.reduce((a,b)=>a+b,0);
   const media = total/12;
@@ -1453,21 +1468,19 @@ function atualizarResumo(){
   const kWp=CONT.mod*MOD.Wp/1000;
   $('#rKwp').innerHTML=br(kWp,2)+'<small>kWp</small>';
 
-  let ger=0, gerSem=0, linhasF=[];
+  const G = calcularGeracao();
+  const ger = G.media, gerSem = G.bruta/12;
+  const linhasF=[];
   FACES.forEach((F,i)=>{
     const n=CONT.porFace[i]||0;
     if(!n) return;
     const tilt = F.plano ? P.tilt : F.tilt;
     const f = fatorPlano(tilt, F.azi);
     const som = PERDAS.valido ? (PERDAS.porFace[i]||0) : 0;
-    const kwpF = n*MOD.Wp/1000;
-    const bruta = kwpF*P.hsp*f*PR_MEDIO()*30;
-    const gerF = bruta*(1-som);
-    ger += gerF; gerSem += bruta;
     linhasF.push(`<tr><td>${F.nome} <span class="k">${br(F.azi,0)}° ${bussola(F.azi)}</span></td>`+
       `<td>${br(f*100,0)}%</td>`+
       `<td>${PERDAS.valido ? '−'+br(som*100,1)+'%' : '—'}</td>`+
-      `<td>${br(gerF,0)}</td></tr>`);
+      `<td>${br(G.porFace[i].total/12,0)}</td></tr>`);
   });
   $('#tFaces').innerHTML = linhasF.length ? linhasF.join('')
     : '<tr><td colspan="4">Nenhum módulo posicionado</td></tr>';
@@ -1495,14 +1508,22 @@ function atualizarResumo(){
   const f=fixAtual();
   const nomeFix={gancho:'Gancho para telha',prisioneiro:'Parafuso prisioneiro',
     minitrilho:'Mini-trilho',triangulo:'Triângulo perfil reforçado'}[f];
-  $('#bom').innerHTML=[
-    ['Módulo <span class="k">620 Wp</span>','2465×1134 mm',CONT.mod],
-    ['Perfil / trilho',br(CONT.trilho,1)+' m','—'],
-    [nomeFix,'—',CONT.fix],
-    ['Grampo intermediário','—',Math.max(0,CONT.mod*2-CONT.fileiras*2)],
-    ['Grampo final','—',CONT.fileiras*4],
-    ['Fileiras','—',CONT.fileiras]
-  ].map(l=>`<tr><td>${l[0]}</td><td>${l[1]}</td><td>${l[2]}</td></tr>`).join('');
+  const ehTri = fixAtual()==='triangulo';
+  const itens=[
+    [`Módulo <span class="k">${P.modWp} Wp</span>`, `${P.modL}×${P.modW} mm`, CONT.mod],
+    ['Perfil / trilho', br(CONT.trilho,1)+' m','—']
+  ];
+  if(ehTri){
+    itens.push(['Triângulo montado','conjunto A+B',CONT.triangulos]);
+    itens.push(['Sapata de concreto','250×250×200 mm',CONT.fix]);
+    itens.push(['Chapa de base','150×90 mm',CONT.fix]);
+  } else {
+    itens.push([nomeFix,'—',CONT.fix]);
+  }
+  itens.push(['Grampo intermediário','—',Math.max(0,CONT.mod*2-CONT.fileiras*2)]);
+  itens.push(['Grampo final','—',CONT.fileiras*4]);
+  itens.push(['Fileiras','—',CONT.fileiras]);
+  $('#bom').innerHTML=itens.map(l=>`<tr><td>${l[0]}</td><td>${l[1]}</td><td>${l[2]}</td></tr>`).join('');
 
   desenharGrafico();
   $('#rNota').innerHTML=
