@@ -1073,6 +1073,11 @@ const STUB = new Proxy({}, {
               : k === 'dataset' ? {}
               : k === 'value' ? ''
               : k === 'textContent' || k === 'innerHTML' ? ''
+              /* consultas devolvem coleção vazia: quem itera não quebra */
+              : k === 'querySelectorAll' ? (()=>[])
+              : k === 'querySelector' || k === 'closest' ? (()=>null)
+              : k === 'getBoundingClientRect' ? (()=>({top:0,left:0,width:0,height:0}))
+              : k === 'files' ? []
               : typeof k === 'string' && k.startsWith('on') ? null
               : ()=>{}),
   set: () => true
@@ -1181,7 +1186,7 @@ function sincronizarFaces(){
 
   /* limite individual de cada superfície ativa */
   const cx=gid('limiteFaces');
-  if(!cx || !cx.innerHTML===undefined) return;
+  if(!cx) return;
   const ativas=[...P.faces].filter(i=>FACES[i]).sort((a,b)=>a-b);
   if(!ativas.length){ cx.innerHTML=''; return; }
   cx.innerHTML = ativas.map(i=>{
@@ -2580,22 +2585,50 @@ addEventListener('resize',()=>{
   renderer.setSize(innerWidth,innerHeight);
 });
 
-aplicarModulo(); aplicarTerreno(); botaoDesfazer(); ativarEdicaoNumerica();
-sincronizar(); reconstruir();
-novoObstaculo('cxQuadrada');
-enquadrar(); listarObstaculos();
-gid('pjData').value = new Date().toISOString().slice(0,10);
-listarProjetos();
-
-let ult=0;
+/* ---------------------------------------------------------------------------
+   O laço de desenho começa ANTES da configuração inicial e é protegido.
+   Assim, se qualquer etapa de inicialização falhar, a cena continua na tela
+   e o erro aparece como aviso — nunca mais tela preta.
+   --------------------------------------------------------------------------- */
+let ult = 0, falhas = 0;
 (function anima(ts){
   requestAnimationFrame(anima);
-  if(tocando){
-    P.hora += (ts-ult)*0.0009*VELS[iVel];
-    if(P.hora>20) P.hora=4;
-    $('#hora').value=P.hora; sincronizar();
+  try{
+    if(tocando){
+      P.hora += (ts-ult)*0.0009*VELS[iVel];
+      if(P.hora>20) P.hora=4;
+      $('#hora').value=P.hora; sincronizar();
+    }
+    ult=ts;
+    posicionarSol(ts);
+  }catch(e){
+    if(++falhas===1) console.error('Solaris: falha no quadro', e);
   }
-  ult=ts;
-  posicionarSol(ts);
-  renderer.render(scene,camera);
+  renderer.render(scene, camera);
 })(0);
+
+/* ---- configuração inicial, etapa por etapa ---- */
+function etapa(nome, fn){
+  try{ fn(); }
+  catch(e){
+    console.error(`Solaris: falha em "${nome}"`, e);
+    avisarFalha(nome, e);
+  }
+}
+function avisarFalha(nome, e){
+  const hud = document.getElementById('hud');
+  if(!hud) return;
+  hud.innerHTML += `<br><span style="color:#e0644a">Falha em ${nome}: `+
+    `${String(e.message||e).slice(0,70)}</span>`;
+}
+
+etapa('módulo e terreno', ()=>{ aplicarModulo(); aplicarTerreno(); });
+etapa('controles',        ()=>{ botaoDesfazer(); ativarEdicaoNumerica(); });
+etapa('painel',           ()=> sincronizar());
+etapa('cena',             ()=> reconstruir());
+etapa('obstáculo padrão', ()=> novoObstaculo('cxQuadrada'));
+etapa('enquadramento',    ()=>{ enquadrar(); listarObstaculos(); });
+etapa('projetos',         ()=>{
+  gid('pjData').value = new Date().toISOString().slice(0,10);
+  listarProjetos();
+});
