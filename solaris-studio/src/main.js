@@ -3,6 +3,8 @@ import * as S from './nucleo/solar.js';
 import { buscarIrradiacao, buscarCEP } from './nucleo/dados.js';
 import * as E from './nucleo/eletrico.js';
 import * as CAT from './nucleo/catalogo.js';
+import * as PJ from './nucleo/projetos.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { lerConta, lerDatasheet } from './nucleo/dados.js';
 import './estilo.css';
 
@@ -25,6 +27,7 @@ const P = {
   ori:'retrato', faces:new Set([0]), gu:0.02, gv:0.02, ou:0.3, ov:0.3, max:40, tilt:22,
   modWp:620, modL:2465, modW:1134, modK:34.6,
   casaX:0, casaZ:0,
+  maxFace:{},
   inversor:'auto', moduloId:'jinko-620n', tMin:5, tMaxAmb:32,
   perdas:{sujeira:3, mismatch:2, cabeamento:1.5, reflexao:2.5, degradacao:0.5, indisponibilidade:0.5},
   beiral:0.5, beiralH:0.2, terreno:'grama', murH:0.4, murW:0.15,
@@ -596,9 +599,12 @@ function montarModulos(){
   for(let fi=0; fi<FACES.length; fi++){
     if(!P.faces.has(fi)) continue;
     const F = FACES[fi];
+    /* limite próprio da face; sem limite definido, usa o global */
+    const limiteFace = (P.maxFace[fi] !== undefined) ? P.maxFace[fi] : Infinity;
+    let nesta = 0;
     let v = P.ov, fileira = 0;
 
-    while(v < F.altura - P.ov && CONT.mod < P.max){
+    while(v < F.altura - P.ov && CONT.mod < P.max && nesta < limiteFace){
       const chaveF = `${fi}:${fileira}`;
       const ori = oriFileira[chaveF] || P.ori;
       const retrato = ori==='retrato';
@@ -625,7 +631,7 @@ function montarModulos(){
       let u = P.ou + aj.du, coluna = 0;
 
       if(!fileirasFora.has(chaveF)){
-        while(u + mu <= F.largura - P.ou + aj.du && CONT.mod < P.max){
+        while(u + mu <= F.largura - P.ou + aj.du && CONT.mod < P.max && nesta < limiteFace){
           const cu = u + mu/2, cv = vPos + usoV/2;
           const ok = [[cu-mu/2,cv-usoV/2],[cu+mu/2,cv-usoV/2],
                       [cu+mu/2,cv+usoV/2],[cu-mu/2,cv+usoV/2]]
@@ -634,7 +640,7 @@ function montarModulos(){
           if(ok && !removidos.has(chave)){
             criarModulo(F, fi, fileira, coluna, cu, cv, mu, mv, usoV, retrato, tilt, hMod);
             linha.push(cu);
-            CONT.mod++; CONT.porFace[fi]++;
+            CONT.mod++; CONT.porFace[fi]++; nesta++;
           }
           u += mu + P.gu; coluna++;
         }
@@ -838,6 +844,7 @@ function calcularSombra(dir, alt){
   const alvos=[];
   gCasa.traverse(o=>{ if(o.isMesh && o.parent!==gFix) alvos.push(o); });
   gObs.traverse(o=>{ if(o.isMesh) alvos.push(o); });
+  if(modeloGLB) modeloGLB.traverse(o=>{ if(o.isMesh) alvos.push(o); });
   let som=0, soma=0;
   for(let i=0;i<CONT.centros.length;i++){
     soma += Math.max(0, CONT.normais[i].dot(dir));
@@ -1171,6 +1178,29 @@ function sincronizarFaces(){
     k=>P.faces.has(+k),
     k=>{ const i=+k; P.faces.has(i)?P.faces.delete(i):P.faces.add(i);
          montarModulos(); sincronizarFaces(); atualizarResumo(); tSombra=0; });
+
+  /* limite individual de cada superfície ativa */
+  const cx=gid('limiteFaces');
+  if(!cx || !cx.innerHTML===undefined) return;
+  const ativas=[...P.faces].filter(i=>FACES[i]).sort((a,b)=>a-b);
+  if(!ativas.length){ cx.innerHTML=''; return; }
+  cx.innerHTML = ativas.map(i=>{
+    const n=CONT.porFace[i]||0;
+    const lim=P.maxFace[i];
+    const cap=lim===undefined?'livre':lim;
+    return `<div class="row" style="margin-top:10px">`+
+      `<div class="name">${FACES[i].nome}</div>`+
+      `<div class="val"><span class="k">${n}</span> / ${cap}</div></div>`+
+      `<input type="range" class="limFace" data-f="${i}" min="0" max="60" step="1" `+
+      `value="${lim===undefined?60:lim}">`;
+  }).join('');
+  cx.querySelectorAll('.limFace').forEach(sl=>{
+    sl.addEventListener('input', e=>{
+      const i=+e.target.dataset.f, v=+e.target.value;
+      if(v>=60) delete P.maxFace[i]; else P.maxFace[i]=v;
+      montarModulos(); sincronizarFaces(); atualizarResumo(); tSombra=0;
+    });
+  });
 }
 function listarObstaculos(){
   chips($('#listaObs'), OBS.map((o,i)=>[String(i), `${i+1} ${OBSTIPOS[o.tipo].n.split(' ')[0]}`]),
@@ -1281,6 +1311,9 @@ function sincronizar(){
   $('#vLon').textContent=br(P.lon,2);
   $('#vDia').textContent=dataDoDia(P.dia);
   $('#vHsp').textContent=br(P.hsp,2);
+  gid('vGlbE').textContent=br(glb.escala,2)+'×';
+  gid('vGlbR').textContent=glb.rot+'°';
+  gid('vGlbY').textContent=br(glb.y,1)+' m';
   $('#vTmin').textContent=P.tMin+' °C';
   $('#vTmax').textContent=P.tMaxAmb+' °C';
   $('#vPsuj').textContent=br(P.perdas.sujeira,1)+' %';
@@ -1912,6 +1945,190 @@ gid('abrir').onclick = ()=>{
   $('#abrir').classList.remove('on');
 };
 
+/* ===================== projeto: salvar e carregar ===================== */
+let projetoAtual = {id:null, nome:'', cliente:'', data:'', nota:''};
+
+/* Estado serializável da simulação. Sets e objetos viram estruturas simples. */
+function capturarEstado(){
+  return {
+    P: {...P, faces:[...P.faces], hspMes:P.hspMes, maxFace:{...P.maxFace},
+        perdas:{...P.perdas}},
+    OBS: OBS.map(o=>({...o})),
+    oriFileira:{...oriFileira},
+    ajusteFileira:JSON.parse(JSON.stringify(ajusteFileira)),
+    removidos:[...removidos],
+    fileirasFora:[...fileirasFora],
+    versao:2
+  };
+}
+function aplicarEstado(e){
+  if(!e || !e.P) throw new Error('estado vazio');
+  Object.keys(e.P).forEach(k=>{
+    if(k==='faces') P.faces=new Set(e.P.faces||[0]);
+    else if(k==='perdas') P.perdas={...P.perdas, ...e.P.perdas};
+    else if(k==='maxFace') P.maxFace={...(e.P.maxFace||{})};
+    else P[k]=e.P[k];
+  });
+  OBS.length=0; (e.OBS||[]).forEach(o=>OBS.push({...o}));
+  proxId = OBS.reduce((m,o)=>Math.max(m,o.id||0),0)+1;
+  for(const k in oriFileira) delete oriFileira[k];
+  Object.assign(oriFileira, e.oriFileira||{});
+  for(const k in ajusteFileira) delete ajusteFileira[k];
+  Object.assign(ajusteFileira, e.ajusteFileira||{});
+  removidos.clear(); (e.removidos||[]).forEach(k=>removidos.add(k));
+  fileirasFora.clear(); (e.fileirasFora||[]).forEach(k=>fileirasFora.add(k));
+  obsSel = OBS.length?0:-1;
+
+  /* devolve os valores aos controles */
+  document.querySelectorAll('input[type=range]').forEach(sl=>{
+    const par = PARES[sl.id];
+    if(par!==undefined && P[par]!==undefined) sl.value=P[par];
+  });
+  aplicarModulo();
+  if(P.mapa) carregarMapa(); else aplicarTerreno();
+  sincronizar(); reconstruir(); listarObstaculos(); enquadrar();
+}
+const PARES = {comp:'comp',larg:'larg',pd:'pd',incl:'incl',azi:'azi',gu:'gu',gv:'gv',
+  ou:'ou',ov:'ov',max:'max',tilt:'tilt',lat:'lat',lon:'lon',dia:'dia',hsp:'hsp',
+  mwp:'modWp',ml:'modL',mw:'modW',mk:'modK',bei:'beiral',beh:'beiralH',
+  casax:'casaX',casaz:'casaZ',murh:'murH',murw:'murW',tmin:'tMin',tmax:'tMaxAmb'};
+
+function montarProjeto(){
+  return {
+    id: projetoAtual.id,
+    nome: gid('pjNome').value.trim() || 'Sem nome',
+    cliente: gid('pjCliente').value.trim(),
+    data: gid('pjData').value.trim() || new Date().toISOString().slice(0,10),
+    nota: gid('pjNota').value.trim(),
+    potencia: +(CONT.mod*MOD.Wp/1000).toFixed(2),
+    modulos: CONT.mod,
+    estado: capturarEstado()
+  };
+}
+
+gid('pjSalvar').onclick = async ()=>{
+  try{
+    const p = PJ.salvarProjeto(montarProjeto());
+    projetoAtual = {id:p.id, nome:p.nome};
+    gid('pjMsg').innerHTML = `Salvo: <b>${p.nome}</b> · ${p.modulos} módulos · `+
+      `${br(p.potencia,2)} kWp.`;
+    listarProjetos();
+    const r = await PJ.sincronizar(p);
+    if(r.ok) gid('pjMsg').innerHTML += ' Sincronizado com a nuvem.';
+  }catch(err){
+    gid('pjMsg').innerHTML = `<span class="al">Não consegui salvar:</span> ${err.message}`;
+  }
+};
+
+gid('pjNovo').onclick = ()=>{
+  projetoAtual={id:null,nome:'',cliente:'',data:'',nota:''};
+  ['pjNome','pjCliente','pjNota'].forEach(id=>{ gid(id).value=''; });
+  gid('pjData').value=new Date().toISOString().slice(0,10);
+  gid('pjMsg').textContent='Novo projeto. A simulação atual foi mantida — ajuste e salve.';
+};
+
+function listarProjetos(){
+  const lista = PJ.listarProjetos();
+  const cx = gid('pjLista');
+  if(!lista.length){ cx.innerHTML='<div class="note">Nenhum projeto salvo ainda.</div>'; return; }
+  cx.innerHTML = `<table><thead><tr><th>Projeto</th><th>kWp</th><th></th></tr></thead><tbody>`+
+    lista.map(p=>`<tr><td><span class="k">${p.nome}</span>`+
+      (p.cliente?`<br><span style="opacity:.6">${p.cliente}</span>`:'')+
+      `<br><span style="opacity:.5;font-size:10px">${String(p.atualizadoEm||'').slice(0,10)}</span></td>`+
+      `<td>${br(p.potencia||0,2)}</td>`+
+      `<td><button class="chip" data-abrir="${p.id}">abrir</button> `+
+      `<button class="chip del" data-apagar="${p.id}">✕</button></td></tr>`).join('')+
+    `</tbody></table>`;
+  cx.querySelectorAll('[data-abrir]').forEach(b=>b.onclick=()=>{
+    try{
+      const p = PJ.carregarProjeto(b.dataset.abrir);
+      aplicarEstado(p.estado);
+      projetoAtual={id:p.id, nome:p.nome};
+      gid('pjNome').value=p.nome||''; gid('pjCliente').value=p.cliente||'';
+      gid('pjData').value=p.data||''; gid('pjNota').value=p.nota||'';
+      gid('pjMsg').innerHTML=`Carregado: <b>${p.nome}</b>.`;
+    }catch(err){ gid('pjMsg').innerHTML=`<span class="al">${err.message}</span>`; }
+  });
+  cx.querySelectorAll('[data-apagar]').forEach(b=>b.onclick=()=>{
+    PJ.apagarProjeto(b.dataset.apagar); listarProjetos();
+    gid('pjMsg').textContent='Projeto removido.';
+  });
+}
+
+gid('pjExportar').onclick = ()=>{
+  const p = montarProjeto();
+  if(!p.id) p.id = 'projeto-'+Date.now().toString(36);
+  PJ.exportarArquivo(p);
+  gid('pjMsg').textContent='Arquivo gerado. Guarde junto da proposta do cliente.';
+};
+gid('pjImportar').onclick = ()=> gid('pjArquivo').click();
+gid('pjArquivo').onchange = async e=>{
+  const f=e.target.files && e.target.files[0]; if(!f) return;
+  try{
+    const p = await PJ.importarArquivo(f);
+    aplicarEstado(p.estado);
+    PJ.salvarProjeto(p);
+    projetoAtual={id:p.id, nome:p.nome};
+    gid('pjNome').value=p.nome||''; gid('pjCliente').value=p.cliente||'';
+    gid('pjData').value=p.data||''; gid('pjNota').value=p.nota||'';
+    listarProjetos();
+    gid('pjMsg').innerHTML=`Importado: <b>${p.nome}</b>.`;
+  }catch(err){ gid('pjMsg').innerHTML=`<span class="al">${err.message}</span>`; }
+  e.target.value='';
+};
+
+/* ===================== modelo 3D importado ===================== */
+let modeloGLB=null;
+const glb={escala:1, rot:0, y:0};
+gid('btnGlb').onclick = ()=> gid('arqGlb').click();
+gid('arqGlb').onchange = e=>{
+  const f=e.target.files && e.target.files[0]; if(!f) return;
+  const nota=gid('notaGlb');
+  nota.textContent='Carregando modelo…';
+  const url=URL.createObjectURL(f);
+  new GLTFLoader().load(url, g=>{
+    if(modeloGLB) scene.remove(modeloGLB);
+    modeloGLB=g.scene;
+    modeloGLB.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=true; } });
+    /* normaliza: apoia a base no chão e ajusta a escala para ~10 m */
+    const cx=new THREE.Box3().setFromObject(modeloGLB);
+    const tam=cx.getSize(new THREE.Vector3());
+    const maior=Math.max(tam.x, tam.z) || 1;
+    glb.escala = +(12/maior).toFixed(2);
+    glb.y = -cx.min.y*glb.escala;
+    scene.add(modeloGLB);
+    posicionarGLB();
+    gid('ctrlGlb').style.display='block';
+    gid('glbE').value=glb.escala; gid('glbY').value=glb.y;
+    nota.innerHTML=`Modelo carregado · ${br(tam.x,1)} × ${br(tam.z,1)} × ${br(tam.y,1)} `+
+      `unidades originais. Escala ajustada para ~12 m — corrija abaixo se souber a medida real.`;
+    sincronizar(); tSombra=0;
+    URL.revokeObjectURL(url);
+  }, undefined, err=>{
+    nota.innerHTML=`<span class="al">Não consegui carregar.</span> `+
+      `Use GLB ou glTF. Formatos CAD como STEP, IFC ou SKP precisam ser convertidos antes.`;
+    URL.revokeObjectURL(url);
+  });
+  e.target.value='';
+};
+function posicionarGLB(){
+  if(!modeloGLB) return;
+  modeloGLB.scale.setScalar(glb.escala);
+  modeloGLB.rotation.y = glb.rot*RAD;
+  modeloGLB.position.set(P.casaX, glb.y, P.casaZ);
+}
+[['glbE','escala'],['glbR','rot'],['glbY','y']].forEach(([id,k])=>{
+  gid(id).addEventListener('input', e=>{
+    glb[k]=+e.target.value; posicionarGLB(); sincronizar(); tSombra=0;
+  });
+});
+gid('glbRemover').onclick = ()=>{
+  if(modeloGLB){ scene.remove(modeloGLB); modeloGLB=null; }
+  gid('ctrlGlb').style.display='none';
+  gid('notaGlb').textContent='Modelo removido.';
+  tSombra=0;
+};
+
 /* ===================== conta de energia ===================== */
 let CONTA=null;
 liga('btnConta','onclick', ()=>{ const a=gid('arqConta'); if(a) a.click(); });
@@ -2367,6 +2584,8 @@ aplicarModulo(); aplicarTerreno(); botaoDesfazer(); ativarEdicaoNumerica();
 sincronizar(); reconstruir();
 novoObstaculo('cxQuadrada');
 enquadrar(); listarObstaculos();
+gid('pjData').value = new Date().toISOString().slice(0,10);
+listarProjetos();
 
 let ult=0;
 (function anima(ts){
