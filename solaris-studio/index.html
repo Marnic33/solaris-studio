@@ -66,7 +66,8 @@
     <div class="now" id="gripVal"></div>
     <button id="fechar" title="Minimizar">✕</button></div>
   <div id="tabs">
-    <button data-p="telhado" class="on">Telhado</button>
+    <button data-p="projeto" class="on">Projeto</button>
+    <button data-p="telhado">Telhado</button>
     <button data-p="entorno">Entorno</button>
     <button data-p="modulos">Módulos</button>
     <button data-p="sol">Sol</button>
@@ -77,8 +78,55 @@
   </div>
   <div id="body">
 
+    <!-- ============ PROJETO ============ -->
+    <div class="pane on" id="p-projeto">
+      <div class="lbl">Identificação</div>
+      <div class="row"><div class="name">Nome do projeto</div></div>
+      <input type="text" id="pjNome" placeholder="Residência Larissa e Nipper">
+      <div class="row" style="margin-top:12px"><div class="name">Cliente</div></div>
+      <input type="text" id="pjCliente" placeholder="Nome do cliente">
+      <div class="row" style="margin-top:12px"><div class="name">Data</div></div>
+      <input type="text" id="pjData" placeholder="AAAA-MM-DD">
+      <div class="row" style="margin-top:12px"><div class="name">Observações</div></div>
+      <input type="text" id="pjNota" placeholder="Anotação livre">
+
+      <div class="acts">
+        <button class="btn pri" id="pjSalvar">Salvar</button>
+        <button class="btn" id="pjNovo">Novo</button>
+      </div>
+      <div class="note" id="pjMsg">Os projetos ficam salvos neste navegador. Exporte
+        para levar a outro aparelho ou guardar junto da proposta.</div>
+
+      <div class="lbl">Projetos salvos</div>
+      <div id="pjLista"></div>
+
+      <div class="lbl">Arquivo</div>
+      <div class="acts" style="margin-top:0">
+        <button class="btn" id="pjExportar">Exportar</button>
+        <button class="btn" id="pjImportar">Importar</button>
+      </div>
+      <input type="file" id="pjArquivo" accept=".json,application/json" style="display:none">
+
+      <div class="lbl">Modelo 3D da edificação</div>
+      <div class="acts" style="margin-top:0">
+        <button class="btn" id="btnGlb">Carregar modelo GLB</button>
+      </div>
+      <input type="file" id="arqGlb" accept=".glb,.gltf" style="display:none">
+      <div class="note" id="notaGlb">Aceita GLB ou glTF. O modelo entra na cena, projeta
+        sombra e pode ser posicionado como qualquer objeto do entorno.</div>
+      <div id="ctrlGlb" style="display:none">
+        <div class="row" style="margin-top:12px"><div class="name">Escala</div><div class="val" id="vGlbE">1,00×</div></div>
+        <input type="range" id="glbE" min="0.01" max="5" step="0.01" value="1">
+        <div class="row" style="margin-top:10px"><div class="name">Rotação</div><div class="val" id="vGlbR">0°</div></div>
+        <input type="range" id="glbR" min="0" max="359" step="1" value="0">
+        <div class="row" style="margin-top:10px"><div class="name">Altura</div><div class="val" id="vGlbY">0,0 m</div></div>
+        <input type="range" id="glbY" min="-10" max="30" step="0.1" value="0">
+        <div class="acts"><button class="btn" id="glbRemover">Remover modelo</button></div>
+      </div>
+    </div>
+
     <!-- ============ TELHADO ============ -->
-    <div class="pane on" id="p-telhado">
+    <div class="pane" id="p-telhado">
       <div class="lbl">Superfície</div>
       <div class="chips" id="tipos"></div>
       <div class="lbl">Águas</div>
@@ -169,8 +217,11 @@
       <div class="chips" id="ori"></div>
       <div class="note" style="margin-top:4px">Toque num módulo na cena para mover a fileira,
         girar, remover o módulo ou a fileira inteira.</div>
-      <div class="lbl">Águas com módulos</div>
+      <div class="lbl">Superfícies com módulos</div>
       <div class="chips" id="faces"></div>
+      <div class="note" style="margin-top:6px">Cada superfície tem seu próprio limite —
+        deslize para escolher quantos módulos entram ali. No máximo, fica livre.</div>
+      <div id="limiteFaces"></div>
       <div class="lbl">Espaçamento</div>
       <div class="row"><div class="name">Entre módulos (lado a lado)</div><div class="val" id="vGu">0,02 m</div></div>
       <input type="range" id="gu" min="0" max="0.5" step="0.005" value="0.02">
