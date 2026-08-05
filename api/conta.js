@@ -1,0 +1,146 @@
+/**
+ * Leitura de conta de energia.
+ *
+ * Recebe imagem ou PDF em base64, envia para o Claude e devolve os dados
+ * estruturados: endereço, consumo mensal, tipo de ligação, distribuidora.
+ *
+ * A chave da API fica só aqui, nunca no navegador.
+ */
+const MODELO = 'claude-sonnet-4-6';
+const LIMITE_BYTES = 8 * 1024 * 1024;   // ~8 MB depois do base64
+
+const INSTRUCAO = `Você está lendo uma conta de energia elétrica brasileira.
+Extraia os dados abaixo e responda SOMENTE com JSON válido, sem markdown e sem crases.
+
+{
+ "titular": "nome do titular ou null",
+ "endereco": "logradouro e número completos, como impresso",
+ "bairro": "bairro ou null",
+ "cidade": "cidade",
+ "uf": "sigla do estado",
+ "cep": "somente dígitos ou null",
+ "distribuidora": "nome da concessionária",
+ "unidade_consumidora": "número da UC ou null",
+ "tipo_ligacao": "monofasica | bifasica | trifasica ou null",
+ "grupo": "A ou B ou null",
+ "subgrupo": "B1 | B2 | B3 | A4 etc, ou null",
+ "classe": "residencial | comercial | rural | industrial ou null",
+ "tensao_v": número ou null,
+ "disjuntor_a": corrente do disjuntor de entrada em amperes, número ou null,
+ "consumo_mes_kwh": número do mês faturado,
+ "historico_kwh": [{"mes":"MM/AAAA","kwh":número}],
+ "media_kwh": média do histórico, número,
+ "valor_total_rs": número ou null,
+ "tarifa_kwh_rs": valor total por kWh com tributos, número ou null,
+ "tarifa_te_rs": parcela TE por kWh, número ou null,
+ "tarifa_tusd_rs": parcela TUSD por kWh, número ou null,
+ "tusd_fio_b_rs": parcela TUSD Fio B por kWh se discriminada, número ou null,
+ "cosip_rs": valor da contribuição de iluminação pública no mês, número ou null,
+ "bandeira": "verde | amarela | vermelha 1 | vermelha 2 ou null",
+ "icms_pct": alíquota de ICMS em porcentagem, número ou null,
+ "demanda_contratada_kw": número ou null,
+ "ja_tem_geracao": true ou false,
+ "creditos_kwh": número ou null,
+ "confianca": "alta | media | baixa",
+ "observacoes": "o que não deu para ler com certeza, ou null"
+}
+
+Regras:
+- Use ponto como separador decimal e não use separador de milhar.
+- O histórico costuma vir num gráfico de barras com 12 meses; transcreva todos que conseguir ler.
+- COSIP aparece como "Contrib. Ilum. Pública", "CIP" ou "COSIP" — é valor em reais, não por kWh.
+- A tarifa costuma vir separada em TE (energia) e TUSD (distribuição). Extraia as duas
+  quando aparecerem, e também o total com tributos.
+- O disjuntor de entrada às vezes aparece como "disj." ou junto do tipo de ligação.
+- Se a conta indicar geração própria (energia injetada, saldo de créditos),
+  marque ja_tem_geracao como true.
+- Não invente. Campo ilegível vai como null e a confiança cai.`;
+
+
+/**
+ * Descobre o tipo real do arquivo pelos primeiros bytes em base64.
+ * O tipo MIME informado pelo navegador é pouco confiável: no Android o
+ * seletor costuma devolver string vazia, e aí um PDF acabaria enviado
+ * como imagem, o que a API recusa.
+ */
+function detectarTipo(base64, informado) {
+  const inicio = String(base64 || '').slice(0, 12);
+  if (inicio.startsWith('JVBERi')) return 'application/pdf';        // %PDF
+  if (inicio.startsWith('/9j/'))   return 'image/jpeg';             // JPEG
+  if (inicio.startsWith('iVBORw0KGgo')) return 'image/png';         // PNG
+  if (inicio.startsWith('R0lGOD'))  return 'image/gif';             // GIF
+  if (inicio.startsWith('UklGR'))   return 'image/webp';            // RIFF/WEBP
+  const aceitos = ['application/pdf', 'image/jpeg', 'image/png',
+                   'image/gif', 'image/webp'];
+  if (aceitos.includes(informado)) return informado;
+  return null;
+}
+
+function blocoDoArquivo(base64, tipo) {
+  return tipo === 'application/pdf'
+    ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
+    : { type: 'image', source: { type: 'base64', media_type: tipo, data: base64 } };
+}
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ erro: 'use POST' });
+
+  const chave = process.env.ANTHROPIC_API_KEY;
+  if (!chave) return res.status(500).json({ erro: 'ANTHROPIC_API_KEY não configurada' });
+
+  const { dados, tipo } = req.body || {};
+  if (!dados) return res.status(400).json({ erro: 'arquivo ausente' });
+  if (dados.length > LIMITE_BYTES * 1.4)
+    return res.status(413).json({ erro: 'arquivo grande demais — use até 8 MB' });
+
+  const tipoReal = detectarTipo(dados, tipo);
+  if (!tipoReal)
+    return res.status(415).json({
+      erro: 'formato não reconhecido',
+      dica: 'Envie PDF, JPEG, PNG ou WebP. Arquivos HEIC do iPhone e formatos ' +
+            'de escritório não são aceitos — converta para PDF ou JPEG antes.'
+    });
+  const bloco = blocoDoArquivo(dados, tipoReal);
+
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': chave,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: MODELO,
+        max_tokens: 1500,
+        messages: [{ role: 'user', content: [bloco, { type: 'text', text: INSTRUCAO }] }]
+      })
+    });
+
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      return res.status(r.status).json({ erro: e?.error?.message || `API ${r.status}` });
+    }
+
+    const d = await r.json();
+    const texto = (d.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
+    const limpo = texto.replace(/```json|```/g, '').trim();
+
+    let extraido;
+    try {
+      extraido = JSON.parse(limpo);
+    } catch (_) {
+      return res.status(502).json({ erro: 'não consegui interpretar a conta', bruto: limpo.slice(0, 800) });
+    }
+
+    /* média de segurança: se o modelo não calculou, faz aqui */
+    if (!extraido.media_kwh && Array.isArray(extraido.historico_kwh) && extraido.historico_kwh.length) {
+      const vals = extraido.historico_kwh.map(h => Number(h.kwh)).filter(v => isFinite(v) && v > 0);
+      if (vals.length) extraido.media_kwh = +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(0);
+    }
+
+    return res.status(200).json(extraido);
+  } catch (e) {
+    return res.status(502).json({ erro: 'falha ao processar', detalhe: e.message });
+  }
+}

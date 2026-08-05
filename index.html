@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#11151b">
+<title>Solaris Studio · Trinity Solaris Brasil</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+<header>
+  <div class="mark">Solaris <span>/</span> Studio</div>
+  <div class="sub" id="stamp">TRINITY SOLARIS BRASIL · SIMULADOR FV</div>
+</header>
+
+<div id="hud"></div>
+<div id="medida"></div>
+<div id="credito"></div>
+
+<div id="viewbar">
+  <button data-v="iso" class="on">Iso</button>
+  <button data-v="topo">Topo</button>
+  <button data-v="norte">Norte</button>
+  <button data-v="sul">Sul</button>
+  <button data-v="leste">Leste</button>
+  <button data-v="oeste">Oeste</button>
+  <button data-v="centro">Centro</button>
+  <button data-v="casa" id="btnCasa">Casa</button>
+  <button data-v="mover" id="btnMover">Mover</button>
+  <button data-v="medir" id="btnMedir">Régua</button>
+</div>
+
+<button id="abrir">Painel</button>
+
+<div id="sel">
+  <div class="h" id="selInfo"></div>
+  <div class="b">
+    <button id="nUp">↑ subir</button>
+    <button id="nDn">↓ descer</button>
+    <button id="nLf">← esquerda</button>
+    <button id="nRt">→ direita</button>
+  </div>
+  <div class="b" style="margin-top:6px">
+    <button id="btnGirar">Girar fileira</button>
+    <button id="btnRemover">Remover módulo</button>
+  </div>
+  <div class="b" style="margin-top:6px">
+    <button id="btnRemFil">Remover fileira</button>
+    <button id="btnZerar">Centralizar</button>
+    <button id="btnFechar">Fechar</button>
+  </div>
+</div>
+
+<div id="sunbar">
+  <button id="undo" title="Desfazer">↺</button>
+  <button id="play">▶</button>
+  <button id="vel">1×</button>
+  <input type="range" id="hora" min="4" max="20" step="0.05" value="12">
+  <div class="clock" id="relogio">12:00</div>
+</div>
+
+<div id="panel">
+  <div id="grip"><div class="bar"></div><div class="t">Projeto</div>
+    <div class="now" id="gripVal"></div>
+    <button id="fechar" title="Minimizar">✕</button></div>
+  <div id="tabs">
+    <button data-p="projeto" class="on">Projeto</button>
+    <button data-p="telhado">Telhado</button>
+    <button data-p="entorno">Entorno</button>
+    <button data-p="modulos">Módulos</button>
+    <button data-p="sol">Sol</button>
+    <button data-p="conta">Conta</button>
+    <button data-p="eletrico">Elétrico</button>
+    <button data-p="resumo">Resumo</button>
+    <button data-p="ia">IA</button>
+  </div>
+  <div id="body">
+
+    <!-- ============ PROJETO ============ -->
+    <div class="pane on" id="p-projeto">
+      <div class="lbl">Identificação</div>
+      <div class="row"><div class="name">Nome do projeto</div></div>
+      <input type="text" id="pjNome" placeholder="Residência Larissa e Nipper">
+      <div class="row" style="margin-top:12px"><div class="name">Cliente</div></div>
+      <input type="text" id="pjCliente" placeholder="Nome do cliente">
+      <div class="row" style="margin-top:12px"><div class="name">Data</div></div>
+      <input type="text" id="pjData" placeholder="AAAA-MM-DD">
+      <div class="row" style="margin-top:12px"><div class="name">Observações</div></div>
+      <input type="text" id="pjNota" placeholder="Anotação livre">
+
+      <div class="acts">
+        <button class="btn pri" id="pjSalvar">Salvar</button>
+        <button class="btn" id="pjNovo">Novo</button>
+      </div>
+      <div class="note" id="pjMsg">Os projetos ficam salvos neste navegador. Exporte
+        para levar a outro aparelho ou guardar junto da proposta.</div>
+
+      <div class="lbl">Neste aparelho</div>
+      <div id="pjLista"></div>
+
+      <div class="lbl">Na nuvem</div>
+      <div class="acts" style="margin-top:0">
+        <button class="btn" id="pjNuvem">Buscar projetos da nuvem</button>
+      </div>
+      <div id="pjListaNuvem"></div>
+
+      <div class="lbl">Arquivo</div>
+      <div class="acts" style="margin-top:0">
+        <button class="btn" id="pjExportar">Exportar</button>
+        <button class="btn" id="pjImportar">Importar</button>
+      </div>
+      <input type="file" id="pjArquivo" accept=".json,application/json" style="display:none">
+
+      <div class="lbl">Modelo 3D da edificação</div>
+      <div class="acts" style="margin-top:0">
+        <button class="btn" id="btnGlb">Carregar modelo GLB</button>
+      </div>
+      <input type="file" id="arqGlb" style="display:none">
+      <div class="note" id="notaGlb">Aceita GLB ou glTF. O modelo entra na cena, projeta
+        sombra e pode ser posicionado como qualquer objeto do entorno.</div>
+      <div id="ctrlGlb" style="display:none">
+        <div class="note" id="glbMedida" style="margin-top:10px"></div>
+        <div class="row" style="margin-top:12px"><div class="name">Largura real do modelo</div><div class="val" id="vGlbL">12,0 m</div></div>
+        <input type="range" id="glbL" min="1" max="80" step="0.5" value="12">
+        <div class="note">Meça a fachada com a régua e ajuste até bater com a medida real.</div>
+        <div class="row" style="margin-top:12px"><div class="name">Escala</div><div class="val" id="vGlbE">1,00×</div></div>
+        <input type="range" id="glbE" min="0.01" max="20" step="0.01" value="1">
+        <div class="row" style="margin-top:10px"><div class="name">Leste (+) / Oeste (−)</div><div class="val" id="vGlbX">0,0 m</div></div>
+        <input type="range" id="glbX" min="-100" max="100" step="0.5" value="0">
+        <div class="row" style="margin-top:10px"><div class="name">Sul (+) / Norte (−)</div><div class="val" id="vGlbZ">0,0 m</div></div>
+        <input type="range" id="glbZ" min="-100" max="100" step="0.5" value="0">
+        <div class="row" style="margin-top:10px"><div class="name">Rotação</div><div class="val" id="vGlbR">0°</div></div>
+        <input type="range" id="glbR" min="0" max="359" step="1" value="0">
+        <div class="row" style="margin-top:10px"><div class="name">Altura</div><div class="val" id="vGlbY">0,0 m</div></div>
+        <input type="range" id="glbY" min="-10" max="30" step="0.1" value="0">
+        <div class="acts">
+          <button class="btn" id="glbArrastar">Arrastar na cena</button>
+          <button class="btn" id="glbAterrar">Apoiar no chão</button>
+        </div>
+        <div class="acts"><button class="btn" id="glbRemover">Remover modelo</button></div>
+      </div>
+    </div>
+
+    <!-- ============ TELHADO ============ -->
+    <div class="pane" id="p-telhado">
+      <div class="lbl">Superfície</div>
+      <div class="chips" id="tipos"></div>
+      <div class="lbl">Águas</div>
+      <div class="chips" id="aguas"></div>
+      <div class="lbl">Dimensões</div>
+      <div class="row"><div class="name">Comprimento</div><div class="val" id="vComp">12,0 m</div></div>
+      <input type="range" id="comp" min="3" max="80" step="0.5" value="12">
+      <div class="row" style="margin-top:10px"><div class="name">Largura (vão)</div><div class="val" id="vLarg">8,0 m</div></div>
+      <input type="range" id="larg" min="3" max="40" step="0.5" value="8">
+      <div class="row" style="margin-top:10px"><div class="name">Pé-direito</div><div class="val" id="vPd">3,0 m</div></div>
+      <input type="range" id="pd" min="0" max="50" step="0.5" value="3">
+      <div class="row" style="margin-top:10px"><div class="name">Inclinação do telhado</div><div class="val" id="vIncl">18°</div></div>
+      <input type="range" id="incl" min="0" max="45" step="1" value="18">
+      <div class="lbl">Platibanda (murinho da laje)</div>
+      <div class="row"><div class="name">Altura</div><div class="val" id="vMurH">0,40 m</div></div>
+      <input type="range" id="murh" min="0" max="2" step="0.05" value="0.4">
+      <div class="row" style="margin-top:10px"><div class="name">Espessura</div><div class="val" id="vMurW">0,15 m</div></div>
+      <input type="range" id="murw" min="0.06" max="0.4" step="0.01" value="0.15">
+      <div class="note" id="notaMur"></div>
+
+      <div class="lbl">Beiral</div>
+      <div class="row"><div class="name">Avanço</div><div class="val" id="vBei">0,50 m</div></div>
+      <input type="range" id="bei" min="0" max="2.5" step="0.05" value="0.5">
+      <div class="row" style="margin-top:10px"><div class="name">Espessura da borda</div><div class="val" id="vBeh">0,20 m</div></div>
+      <input type="range" id="beh" min="0.05" max="0.8" step="0.01" value="0.2">
+      <div class="note" id="notaBei"></div>
+
+      <div class="lbl">Posição sobre o mapa</div>
+      <div class="row"><div class="name">Leste (+) / Oeste (−)</div><div class="val" id="vCasaX">0,0 m</div></div>
+      <input type="range" id="casax" min="-400" max="400" step="0.5" value="0">
+      <div class="row" style="margin-top:10px"><div class="name">Sul (+) / Norte (−)</div><div class="val" id="vCasaZ">0,0 m</div></div>
+      <input type="range" id="casaz" min="-400" max="400" step="0.5" value="0">
+      <div class="note">Ligue o satélite e use o botão <b>Casa</b> na barra lateral para arrastar
+        a construção até cima do telhado real. Depois ajuste no fino tocando nos números.</div>
+
+      <div class="lbl">Orientação</div>
+      <div class="chips" id="orientPre"></div>
+      <div class="row" style="margin-top:8px"><div class="name">Azimute da água 1</div><div class="val" id="vAzi">0° N</div></div>
+      <input type="range" id="azi" min="0" max="359" step="1" value="0">
+    </div>
+
+    <!-- ============ ENTORNO ============ -->
+    <div class="pane" id="p-entorno">
+      <div class="lbl">Terreno</div>
+      <div class="chips" id="terrenos"></div>
+      <div class="lbl">Objetos na cena</div>
+      <div class="chips" id="listaObs"></div>
+      <div class="lbl">Adicionar</div>
+      <div class="chips" id="addObs"></div>
+      <div id="editObs" style="display:none">
+        <div class="lbl">Editar selecionado</div>
+        <div class="row"><div class="name">Posição X (leste)</div><div class="val" id="vOx">0,0 m</div></div>
+        <input type="range" id="ox" min="-60" max="60" step="0.5" value="4">
+        <div class="row" style="margin-top:10px"><div class="name">Posição Z (sul)</div><div class="val" id="vOz">0,0 m</div></div>
+        <input type="range" id="oz" min="-60" max="60" step="0.5" value="-3">
+        <div class="row" style="margin-top:10px"><div class="name">Largura</div><div class="val" id="vOl">1,2 m</div></div>
+        <input type="range" id="ol" min="0.3" max="30" step="0.1" value="1.2">
+        <div class="row" style="margin-top:10px"><div class="name">Profundidade</div><div class="val" id="vOp">1,2 m</div></div>
+        <input type="range" id="op" min="0.3" max="30" step="0.1" value="1.2">
+        <div class="row" style="margin-top:10px"><div class="name">Altura</div><div class="val" id="vOh">1,8 m</div></div>
+        <input type="range" id="oh" min="0.3" max="60" step="0.1" value="1.8">
+        <div class="row" style="margin-top:10px"><div class="name">Rotação</div><div class="val" id="vOr">0°</div></div>
+        <input type="range" id="or" min="0" max="359" step="1" value="0">
+        <div class="chips" style="margin-top:12px"><button class="chip del" id="delObs">Excluir objeto</button></div>
+      </div>
+      <div class="note">Caixas d'água ficam apoiadas sobre o telhado. Casas, prédios e árvores
+        ficam no solo e podem ser afastados para simular sombra de vizinhos.</div>
+    </div>
+
+    <!-- ============ MÓDULOS ============ -->
+    <div class="pane" id="p-modulos">
+      <div class="lbl">Modelo do módulo</div>
+      <div class="chips" id="modPre"></div>
+      <div class="row" style="margin-top:8px"><div class="name">Potência</div><div class="val" id="vWp">620 Wp</div></div>
+      <input type="range" id="mwp" min="200" max="800" step="5" value="620">
+      <div class="row" style="margin-top:10px"><div class="name">Comprimento</div><div class="val" id="vML">2465 mm</div></div>
+      <input type="range" id="ml" min="1400" max="2600" step="1" value="2465">
+      <div class="row" style="margin-top:10px"><div class="name">Largura</div><div class="val" id="vMW">1134 mm</div></div>
+      <input type="range" id="mw" min="700" max="1400" step="1" value="1134">
+      <div class="row" style="margin-top:10px"><div class="name">Peso</div><div class="val" id="vMK">34,6 kg</div></div>
+      <input type="range" id="mk" min="10" max="60" step="0.1" value="34.6">
+      <div class="note" id="notaMod"></div>
+      <div class="acts">
+        <button class="btn" id="btnDatasheetMod">Importar datasheet do módulo</button>
+      </div>
+
+      <div class="lbl">Orientação padrão das novas fileiras</div>
+      <div class="chips" id="ori"></div>
+      <div class="note" style="margin-top:4px">Toque num módulo na cena para mover a fileira,
+        girar, remover o módulo ou a fileira inteira.</div>
+      <div class="lbl">Superfícies com módulos</div>
+      <div class="chips" id="faces"></div>
+      <div class="note" style="margin-top:6px">Cada superfície tem seu próprio limite —
+        deslize para escolher quantos módulos entram ali. No máximo, fica livre.</div>
+      <div id="limiteFaces"></div>
+      <div class="lbl">Espaçamento</div>
+      <div class="row"><div class="name">Entre módulos (lado a lado)</div><div class="val" id="vGu">0,02 m</div></div>
+      <input type="range" id="gu" min="0" max="0.5" step="0.005" value="0.02">
+      <div class="row" style="margin-top:10px"><div class="name">Entre fileiras</div><div class="val" id="vGv">0,02 m</div></div>
+      <input type="range" id="gv" min="0" max="4" step="0.02" value="0.02">
+      <div class="note" id="notaFileira"></div>
+      <div class="lbl">Recuos</div>
+      <div class="row"><div class="name">Lateral</div><div class="val" id="vOu">0,30 m</div></div>
+      <input type="range" id="ou" min="0" max="4" step="0.05" value="0.3">
+      <div class="row" style="margin-top:10px"><div class="name">Beiral</div><div class="val" id="vOv">0,30 m</div></div>
+      <input type="range" id="ov" min="0" max="4" step="0.05" value="0.3">
+      <div class="lbl">Quantidade</div>
+      <div class="row"><div class="name">Limite de módulos</div><div class="val" id="vMax">40</div></div>
+      <input type="range" id="max" min="1" max="150" step="1" value="40">
+      <div class="lbl">Inclinação em plano (laje / solo)</div>
+      <div class="row"><div class="name">Ângulo do triângulo</div><div class="val" id="vTilt">22°</div></div>
+      <input type="range" id="tilt" min="5" max="35" step="1" value="22">
+      <div class="lbl">Fixação</div>
+      <div class="chips" id="fix"></div>
+      <div class="note" id="fixNota"></div>
+      <div class="acts"><button class="btn" id="restaurar">Restaurar removidos</button></div>
+    </div>
+
+    <!-- ============ SOL ============ -->
+    <div class="pane" id="p-sol">
+      <div class="lbl">Endereço da obra</div>
+      <div class="lin">
+        <input type="text" id="cep" placeholder="Rua Alarico Bérgamo, 123, São Paulo"
+               autocomplete="street-address" enterkeyhint="search">
+        <button class="btn pri" id="btnCep">Buscar</button>
+      </div>
+      <div class="note" id="cepMsg">Digite rua e número. CEP também funciona, mas com número
+        a precisão é bem maior.</div>
+      <div class="lbl">Coordenada exata (recomendado)</div>
+      <div class="lin">
+        <input type="text" id="coord" placeholder="-23.5432, -46.6291 ou link do Maps">
+        <button class="btn pri" id="btnCoord">Aplicar</button>
+      </div>
+      <div class="note" id="coordMsg">No Google Maps, segure o dedo em cima do telhado,
+        toque na coordenada que aparece para copiar e cole aqui. Link compartilhado
+        também funciona. É o único jeito de acertar o ponto no metro.</div>
+
+      <div class="lbl">Ou escolha</div>
+      <div class="chips" id="locais"></div>
+      <div class="row" style="margin-top:10px"><div class="name">Latitude</div><div class="val" id="vLat">-23,32</div></div>
+      <input type="range" id="lat" min="-34" max="6" step="0.01" value="-23.32">
+      <div class="row" style="margin-top:10px"><div class="name">Longitude</div><div class="val" id="vLon">-46,58</div></div>
+      <input type="range" id="lon" min="-74" max="-34" step="0.01" value="-46.58">
+      <div class="lbl">Imagem de satélite</div>
+      <div class="chips" id="mapaTgl"></div>
+      <div class="chips" id="mapaZoom" style="margin-top:6px"></div>
+      <div class="chips" id="mapaFonte" style="margin-top:6px"></div>
+      <div class="note" id="notaMapa">Carrega a imagem aérea das coordenadas atuais como piso da
+        cena. Gire o azimute até o telhado bater com o da foto.</div>
+      <div class="acts" style="margin-top:10px">
+        <button class="btn" id="btnAmpliarMapa">Ampliar cobertura</button>
+      </div>
+
+      <div class="lbl">Data</div>
+      <div class="chips" id="datas"></div>
+      <div class="row" style="margin-top:8px"><div class="name">Dia do ano</div><div class="val" id="vDia">21/jun</div></div>
+      <input type="range" id="dia" min="1" max="365" step="1" value="172">
+      <div class="lbl">Irradiação medida</div>
+      <div class="acts" style="margin-top:0">
+        <button class="btn pri" id="btnIrrad">Buscar irradiação real</button>
+      </div>
+      <div class="note" id="notaIrrad">Consulta NASA POWER / PVGIS nas coordenadas atuais e
+        substitui o HSP estimado por dados medidos, mês a mês.</div>
+
+      <div class="lbl">Irradiação de referência</div>
+      <div class="row"><div class="name">HSP do local (CRESESB)</div><div class="val" id="vHsp">4,60</div></div>
+      <input type="range" id="hsp" min="3" max="6.5" step="0.05" value="4.6">
+      <div class="lbl">Exibir</div>
+      <div class="chips" id="show"></div>
+    </div>
+
+    <!-- ============ RESUMO ============ -->
+    <div class="pane" id="p-resumo">
+      <div class="lbl">Sistema</div>
+      <div class="big" id="rKwp">—<small>kWp</small></div>
+      <div class="note" id="rGer"></div>
+      <div class="lbl">Sombreamento anual</div>
+      <div class="acts" style="margin-top:0">
+        <button class="btn pri" id="btnSombra">Calcular perdas por sombra</button>
+      </div>
+      <div class="note" id="notaSombra"></div>
+      <div class="lbl">Desempenho por água</div>
+      <table><thead><tr><th>Água</th><th>Fator</th><th>Sombra</th><th>kWh/mês</th></tr></thead>
+        <tbody id="tFaces"></tbody></table>
+      <div class="lbl">Geração mês a mês</div>
+      <div id="grafMes"></div>
+      <div class="note" id="notaMes"></div>
+      <div class="lbl">Materiais</div>
+      <table><thead><tr><th>Item</th><th>Medida</th><th>Qtd</th></tr></thead>
+        <tbody id="bom"></tbody></table>
+      <div class="note" id="rNota"></div>
+      <div class="acts">
+        <button class="btn pri" id="btnPdf">Gerar proposta PDF</button>
+      </div>
+      <div class="acts" style="margin-top:8px">
+        <button class="btn" id="btnBriefing">Copiar para orçamento</button>
+      </div>
+      <div class="acts" style="margin-top:8px">
+        <button class="btn" id="png">Salvar imagem</button>
+        <button class="btn" id="txt">Baixar resumo</button>
+      </div>
+    </div>
+
+    <!-- ============ CONTA ============ -->
+    <div class="pane" id="p-conta">
+      <div class="lbl">Conta de energia</div>
+      <div class="note" style="margin-top:0">Envie foto ou PDF da conta. A IA lê o endereço,
+        o histórico de consumo e o tipo de ligação, e monta o sistema a partir disso.</div>
+      <div class="acts">
+        <button class="btn pri" id="btnConta">Enviar conta</button>
+      </div>
+      <input type="file" id="arqConta" style="display:none">
+      <div id="saidaConta" style="margin-top:14px"></div>
+
+      <div class="lbl">Dados tarifários</div>
+      <div class="note" style="margin-top:0">Preenchidos pela leitura da conta. Ajuste se
+        precisar — vão para o briefing como referência para o orçamento.</div>
+      <div class="row" style="margin-top:10px"><div class="name">Consumo médio</div><div class="val" id="vConsumo">0 kWh</div></div>
+      <input type="range" id="consumo" min="0" max="5000" step="10" value="0">
+      <div class="row" style="margin-top:10px"><div class="name">Tarifa total</div><div class="val" id="vTarifa">0,98</div></div>
+      <input type="range" id="tarifa" min="0.4" max="2" step="0.001" value="0.98">
+      <div class="row" style="margin-top:10px"><div class="name">TUSD Fio B</div><div class="val" id="vFioB">0,27</div></div>
+      <input type="range" id="fiob" min="0.05" max="0.6" step="0.001" value="0.27">
+      <div class="row" style="margin-top:10px"><div class="name">COSIP</div><div class="val" id="vCosip">0,00</div></div>
+      <input type="range" id="cosip" min="0" max="120" step="0.5" value="0">
+      <div class="lbl">Ligação</div>
+      <div class="chips" id="ligacao"></div>
+      <div class="note" id="notaTarifa"></div>
+    </div>
+
+    <!-- ============ ELÉTRICO ============ -->
+    <div class="pane" id="p-eletrico">
+      <div class="lbl">Inversor</div>
+      <div class="chips" id="invLista"></div>
+      <div class="note" id="notaInv"></div>
+      <div class="acts">
+        <button class="btn" id="btnDatasheet">Importar datasheet</button>
+      </div>
+      <input type="file" id="arqDatasheet" accept="application/pdf,image/*" style="display:none">
+      <div id="saidaDatasheet"></div>
+
+      <div class="lbl">Quantidade de inversores</div>
+      <div class="chips" id="invQtdAuto"></div>
+      <div class="row" style="margin-top:8px"><div class="name">Unidades</div><div class="val" id="vInvQtd">1</div></div>
+      <input type="range" id="invQtd" min="1" max="30" step="1" value="1">
+      <div class="note" id="notaQtd"></div>
+
+      <div class="lbl">Arranjo de strings</div>
+      <div id="strings"></div>
+
+      <div class="lbl">Temperatura de projeto</div>
+      <div class="row"><div class="name">Mínima (Voc a frio)</div><div class="val" id="vTmin">5 °C</div></div>
+      <input type="range" id="tmin" min="-5" max="20" step="1" value="5">
+      <div class="row" style="margin-top:10px"><div class="name">Ambiente máxima</div><div class="val" id="vTmax">32 °C</div></div>
+      <input type="range" id="tmax" min="20" max="45" step="1" value="32">
+
+      <div class="lbl">Perdas do sistema</div>
+      <div class="row"><div class="name">Sujeira</div><div class="val" id="vPsuj">3,0 %</div></div>
+      <input type="range" id="psuj" min="0" max="10" step="0.5" value="3">
+      <div class="row" style="margin-top:8px"><div class="name">Mismatch</div><div class="val" id="vPmis">2,0 %</div></div>
+      <input type="range" id="pmis" min="0" max="6" step="0.5" value="2">
+      <div class="row" style="margin-top:8px"><div class="name">Cabeamento</div><div class="val" id="vPcab">1,5 %</div></div>
+      <input type="range" id="pcab" min="0" max="6" step="0.5" value="1.5">
+      <div class="row" style="margin-top:8px"><div class="name">Reflexão (IAM)</div><div class="val" id="vPref">2,5 %</div></div>
+      <input type="range" id="pref" min="0" max="6" step="0.5" value="2.5">
+      <div class="row" style="margin-top:8px"><div class="name">Degradação + indisponib.</div><div class="val" id="vPdeg">1,0 %</div></div>
+      <input type="range" id="pdeg" min="0" max="5" step="0.5" value="1">
+      <div class="note" id="notaPR"></div>
+    </div>
+
+    <!-- ============ IA ============ -->
+    <div class="pane" id="p-ia">
+      <div class="lbl">Análise do projeto</div>
+      <div class="note" style="margin-top:0">A IA recebe o resumo técnico desta simulação —
+        faces, azimutes, sombreamento, obstáculos, arranjo e geração — e devolve diagnóstico
+        e propostas de otimização.</div>
+      <div class="acts">
+        <button class="btn pri" id="btnIA">Analisar projeto</button>
+      </div>
+      <div class="lbl">Pergunta específica (opcional)</div>
+      <input type="text" id="perguntaIA" placeholder="Ex.: vale a pena ocupar a água sul?">
+      <div id="saidaIA" style="margin-top:16px"></div>
+    </div>
+
+  </div>
+</div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
