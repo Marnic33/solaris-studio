@@ -97,8 +97,14 @@
       <div class="note" id="pjMsg">Os projetos ficam salvos neste navegador. Exporte
         para levar a outro aparelho ou guardar junto da proposta.</div>
 
-      <div class="lbl">Projetos salvos</div>
+      <div class="lbl">Neste aparelho</div>
       <div id="pjLista"></div>
+
+      <div class="lbl">Na nuvem</div>
+      <div class="acts" style="margin-top:0">
+        <button class="btn" id="pjNuvem">Buscar projetos da nuvem</button>
+      </div>
+      <div id="pjListaNuvem"></div>
 
       <div class="lbl">Arquivo</div>
       <div class="acts" style="margin-top:0">
@@ -111,7 +117,7 @@
       <div class="acts" style="margin-top:0">
         <button class="btn" id="btnGlb">Carregar modelo GLB</button>
       </div>
-      <input type="file" id="arqGlb" accept=".glb,.gltf" style="display:none">
+      <input type="file" id="arqGlb" style="display:none">
       <div class="note" id="notaGlb">Aceita GLB ou glTF. O modelo entra na cena, projeta
         sombra e pode ser posicionado como qualquer objeto do entorno.</div>
       <div id="ctrlGlb" style="display:none">
