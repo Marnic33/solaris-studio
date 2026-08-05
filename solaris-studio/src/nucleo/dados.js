@@ -42,43 +42,51 @@ export async function buscarCEP(termo) {
   };
 }
 
-/** Envia a conta de energia para /api/conta e devolve os dados extraídos. */
-export async function lerConta(arquivo) {
-  const base64 = await new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(String(r.result).split(',')[1]);
-    r.onerror = () => rej(new Error('não consegui ler o arquivo'));
-    r.readAsDataURL(arquivo);
-  });
-  const r = await fetch('/api/conta', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ dados: base64, tipo: arquivo.type })
-  });
-  const d = await r.json();
-  if (!r.ok) throw new Error(d.erro || `HTTP ${r.status}`);
-  return d;
+const LIMITE_MB = 8;
+
+/**
+ * Tipo do arquivo. O navegador nem sempre informa — no Android o seletor
+ * costuma devolver string vazia — então a extensão serve de reserva.
+ */
+function tipoDoArquivo(arquivo) {
+  if (arquivo.type) return arquivo.type;
+  const ext = String(arquivo.name || '').toLowerCase().split('.').pop();
+  return { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+           png: 'image/png', webp: 'image/webp', gif: 'image/gif' }[ext] || '';
 }
 
-/** Converte um arquivo em base64 sem o prefixo data:. */
+/** Lê o arquivo como base64, sem o prefixo data:. */
 function paraBase64(arquivo) {
   return new Promise((res, rej) => {
     const r = new FileReader();
-    r.onload = () => res(String(r.result).split(',')[1]);
+    r.onload = () => {
+      const t = String(r.result);
+      const virgula = t.indexOf(',');
+      res(virgula >= 0 ? t.slice(virgula + 1) : t);
+    };
     r.onerror = () => rej(new Error('não consegui ler o arquivo'));
     r.readAsDataURL(arquivo);
   });
 }
 
-/** Envia um datasheet para /api/datasheet e devolve o equipamento estruturado. */
-export async function lerDatasheet(arquivo) {
+async function enviarArquivo(rota, arquivo) {
+  const mb = arquivo.size / 1048576;
+  if (mb > LIMITE_MB)
+    throw new Error(`arquivo de ${mb.toFixed(1)} MB — o limite é ${LIMITE_MB} MB. ` +
+                    `Reduza a resolução da foto ou envie só a primeira página do PDF.`);
   const dados = await paraBase64(arquivo);
-  const r = await fetch('/api/datasheet', {
+  const r = await fetch(rota, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ dados, tipo: arquivo.type })
+    body: JSON.stringify({ dados, tipo: tipoDoArquivo(arquivo), nome: arquivo.name })
   });
-  const d = await r.json();
-  if (!r.ok) throw new Error(d.erro || `HTTP ${r.status}`);
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error([d.erro, d.dica].filter(Boolean).join(' ') || `HTTP ${r.status}`);
   return d;
 }
+
+/** Envia a conta de energia para /api/conta e devolve os dados extraídos. */
+export const lerConta = arquivo => enviarArquivo('/api/conta', arquivo);
+
+/** Envia um datasheet para /api/datasheet e devolve o equipamento estruturado. */
+export const lerDatasheet = arquivo => enviarArquivo('/api/datasheet', arquivo);
