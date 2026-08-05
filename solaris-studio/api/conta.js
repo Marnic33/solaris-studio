@@ -56,6 +56,32 @@ Regras:
   marque ja_tem_geracao como true.
 - Não invente. Campo ilegível vai como null e a confiança cai.`;
 
+
+/**
+ * Descobre o tipo real do arquivo pelos primeiros bytes em base64.
+ * O tipo MIME informado pelo navegador é pouco confiável: no Android o
+ * seletor costuma devolver string vazia, e aí um PDF acabaria enviado
+ * como imagem, o que a API recusa.
+ */
+function detectarTipo(base64, informado) {
+  const inicio = String(base64 || '').slice(0, 12);
+  if (inicio.startsWith('JVBERi')) return 'application/pdf';        // %PDF
+  if (inicio.startsWith('/9j/'))   return 'image/jpeg';             // JPEG
+  if (inicio.startsWith('iVBORw0KGgo')) return 'image/png';         // PNG
+  if (inicio.startsWith('R0lGOD'))  return 'image/gif';             // GIF
+  if (inicio.startsWith('UklGR'))   return 'image/webp';            // RIFF/WEBP
+  const aceitos = ['application/pdf', 'image/jpeg', 'image/png',
+                   'image/gif', 'image/webp'];
+  if (aceitos.includes(informado)) return informado;
+  return null;
+}
+
+function blocoDoArquivo(base64, tipo) {
+  return tipo === 'application/pdf'
+    ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
+    : { type: 'image', source: { type: 'base64', media_type: tipo, data: base64 } };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ erro: 'use POST' });
 
@@ -67,10 +93,14 @@ export default async function handler(req, res) {
   if (dados.length > LIMITE_BYTES * 1.4)
     return res.status(413).json({ erro: 'arquivo grande demais — use até 8 MB' });
 
-  const ehPdf = tipo === 'application/pdf';
-  const bloco = ehPdf
-    ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: dados } }
-    : { type: 'image', source: { type: 'base64', media_type: tipo || 'image/jpeg', data: dados } };
+  const tipoReal = detectarTipo(dados, tipo);
+  if (!tipoReal)
+    return res.status(415).json({
+      erro: 'formato não reconhecido',
+      dica: 'Envie PDF, JPEG, PNG ou WebP. Arquivos HEIC do iPhone e formatos ' +
+            'de escritório não são aceitos — converta para PDF ou JPEG antes.'
+    });
+  const bloco = blocoDoArquivo(dados, tipoReal);
 
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
