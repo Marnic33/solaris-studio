@@ -1316,9 +1316,17 @@ function sincronizar(){
   $('#vLon').textContent=br(P.lon,2);
   $('#vDia').textContent=dataDoDia(P.dia);
   $('#vHsp').textContent=br(P.hsp,2);
-  gid('vGlbE').textContent=br(glb.escala,2)+'×';
+  gid('vGlbE').textContent=br(glb.escala,3)+'×';
   gid('vGlbR').textContent=glb.rot+'°';
+  gid('vGlbX').textContent=br(glb.x,1)+' m';
   gid('vGlbY').textContent=br(glb.y,1)+' m';
+  gid('vGlbZ').textContent=br(glb.z,1)+' m';
+  gid('vGlbL').textContent=br(glb.largura,1)+' m';
+  if(glb.cru){
+    const c=glb.cru, e=glb.escala;
+    gid('glbMedida').innerHTML=
+      `Na cena: <b>${br(c.x*e,1)} × ${br(c.z*e,1)} m</b>, altura <b>${br(c.y*e,1)} m</b>.`;
+  }
   $('#vTmin').textContent=P.tMin+' °C';
   $('#vTmax').textContent=P.tMaxAmb+' °C';
   $('#vPsuj').textContent=br(P.perdas.sujeira,1)+' %';
@@ -1697,8 +1705,11 @@ cv.addEventListener('pointerdown',e=>{
   px=downX=e.clientX; py=downY=e.clientY; mov=0;
   cv.setPointerCapture(e.pointerId);
   if(medindo){ arr=false; return; }
-  if(moverCasa){ arrastoCasa=pegarCasa(e.clientX,e.clientY); arr=false;
-    cv.style.cursor='grabbing'; return; }
+  if(arrastarGLB || moverCasa){
+    arrastoCasa = pegarGLB(e.clientX,e.clientY) ||
+                  (moverCasa ? pegarCasa(e.clientX,e.clientY) : null);
+    if(arrastoCasa){ arr=false; cv.style.cursor='grabbing'; return; }
+  }
   if(panMode || e.button===2 || e.shiftKey){ arr=false; panDrag=true; return; }
   const pego = pegarObstaculo(e.clientX, e.clientY);
   if(pego){ arrastando=pego; arr=false; cv.style.cursor='grabbing'; return; }
@@ -1707,7 +1718,9 @@ cv.addEventListener('pointerdown',e=>{
 cv.addEventListener('pointerup',e=>{
   cv.style.cursor='';
   if(arrastoCasa){
+    const eraGLB = arrastoCasa.tipo==='glb';
     arrastoCasa=null; arr=false;
+    if(eraGLB){ devolverControlesGLB(); sincronizar(); tSombra=0; return; }
     gid('casax').value=P.casaX;
     gid('casaz').value=P.casaZ;
     reconstruir(); sincronizar();
@@ -1727,7 +1740,11 @@ cv.addEventListener('pointerup',e=>{
 });
 cv.addEventListener('pointermove',e=>{
   mov+=Math.abs(e.clientX-px)+Math.abs(e.clientY-py);
-  if(arrastoCasa){ moverCasaPara(e.clientX,e.clientY); px=e.clientX; py=e.clientY; return; }
+  if(arrastoCasa){
+    if(arrastoCasa.tipo==='glb') moverGLBPara(e.clientX,e.clientY);
+    else moverCasaPara(e.clientX,e.clientY);
+    px=e.clientX; py=e.clientY; return;
+  }
   if(panDrag){ deslocarCena(-(e.clientX-px), -(e.clientY-py)); px=e.clientX; py=e.clientY; return; }
   if(arrastando){ px=e.clientX; py=e.clientY; moverArrasto(e.clientX,e.clientY); return; }
   if(!arr) return;
@@ -2151,62 +2168,156 @@ gid('pjArquivo').onchange = async e=>{
 };
 
 /* ===================== modelo 3D importado ===================== */
-let modeloGLB=null;
-const glb={escala:1, rot:0, y:0};
+let modeloGLB=null, arrastarGLB=false;
+/* posição, rotação e escala próprias — independentes da casa paramétrica */
+const glb={escala:1, rot:0, x:0, y:0, z:0, largura:12, cru:null};
+
 gid('btnGlb').onclick = ()=> gid('arqGlb').click();
+
 gid('arqGlb').onchange = e=>{
   const f=e.target.files && e.target.files[0]; if(!f) return;
   const nota=gid('notaGlb');
   if(!/\.(glb|gltf)$/i.test(f.name)){
-    nota.innerHTML=`<span class="al">"${f.name}" não é GLB nem glTF.</span> `+
+    nota.innerHTML=`<span class="al">"${f.name}" nao e GLB nem glTF.</span> `+
       `Formatos CAD (STEP, IFC, SKP, DWG) precisam ser convertidos antes — `+
-      `o Blender e o FreeCAD fazem isso de graça.`;
+      `o Blender e o FreeCAD fazem isso de graca.`;
     e.target.value=''; return;
   }
-  nota.textContent='Carregando modelo…';
+  nota.textContent='Carregando modelo...';
   const url=URL.createObjectURL(f);
   new GLTFLoader().load(url, g=>{
     if(modeloGLB) scene.remove(modeloGLB);
     modeloGLB=g.scene;
     modeloGLB.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=true; } });
-    /* normaliza: apoia a base no chão e ajusta a escala para ~10 m */
-    const cx=new THREE.Box3().setFromObject(modeloGLB);
-    const tam=cx.getSize(new THREE.Vector3());
-    const maior=Math.max(tam.x, tam.z) || 1;
-    glb.escala = +(12/maior).toFixed(2);
-    glb.y = -cx.min.y*glb.escala;
+
+    /* mede em escala 1 para permitir dimensionar por medida real */
+    modeloGLB.scale.setScalar(1);
+    modeloGLB.rotation.set(0,0,0);
+    modeloGLB.position.set(0,0,0);
+    modeloGLB.updateMatrixWorld(true);
+    const caixa=new THREE.Box3().setFromObject(modeloGLB);
+    const tam=caixa.getSize(new THREE.Vector3());
+    glb.cru={x:tam.x||1, y:tam.y||1, z:tam.z||1, minY:caixa.min.y};
+
+    glb.largura=12;
+    glb.escala=+(glb.largura/Math.max(glb.cru.x, glb.cru.z)).toFixed(4);
+    glb.rot=0;
+    glb.x=P.casaX; glb.z=P.casaZ;
+    glb.y=-glb.cru.minY*glb.escala;
+
     scene.add(modeloGLB);
     posicionarGLB();
     gid('ctrlGlb').style.display='block';
-    gid('glbE').value=glb.escala; gid('glbY').value=glb.y;
-    nota.innerHTML=`Modelo carregado · ${br(tam.x,1)} × ${br(tam.z,1)} × ${br(tam.y,1)} `+
-      `unidades originais. Escala ajustada para ~12 m — corrija abaixo se souber a medida real.`;
-    sincronizar(); tSombra=0;
+    devolverControlesGLB();
+    nota.innerHTML=`<b>${f.name}</b> carregado.`;
+    sincronizar(); enquadrarGLB(); tSombra=0;
     URL.revokeObjectURL(url);
-  }, undefined, err=>{
-    nota.innerHTML=`<span class="al">Não consegui carregar.</span> `+
-      `Use GLB ou glTF. Formatos CAD como STEP, IFC ou SKP precisam ser convertidos antes.`;
+  }, undefined, ()=>{
+    nota.innerHTML=`<span class="al">Nao consegui carregar este arquivo.</span> `+
+      `Ele pode estar corrompido ou usar uma extensao glTF incomum. `+
+      `Abrir e reexportar pelo Blender costuma resolver.`;
     URL.revokeObjectURL(url);
   });
   e.target.value='';
 };
+
 function posicionarGLB(){
   if(!modeloGLB) return;
   modeloGLB.scale.setScalar(glb.escala);
   modeloGLB.rotation.y = glb.rot*RAD;
-  modeloGLB.position.set(P.casaX, glb.y, P.casaZ);
+  modeloGLB.position.set(glb.x, glb.y, glb.z);
 }
-[['glbE','escala'],['glbR','rot'],['glbY','y']].forEach(([id,k])=>{
-  gid(id).addEventListener('input', e=>{
-    glb[k]=+e.target.value; posicionarGLB(); sincronizar(); tSombra=0;
+function devolverControlesGLB(){
+  const v={glbL:glb.largura, glbE:glb.escala, glbR:glb.rot,
+           glbX:glb.x, glbY:glb.y, glbZ:glb.z};
+  for(const id in v){
+    const el=document.getElementById(id);
+    if(el) el.value=v[id];
+  }
+}
+function enquadrarGLB(){
+  if(!modeloGLB || !glb.cru) return;
+  orb.alvo.set(glb.x, glb.y + glb.cru.y*glb.escala*0.4, glb.z);
+  orb.raio=Math.max(8, Math.max(glb.cru.x, glb.cru.z)*glb.escala*2.2);
+  posicionaCamera();
+}
+
+/* largura real da fachada define a escala */
+gid('glbL').addEventListener('input', e=>{
+  glb.largura=+e.target.value;
+  if(glb.cru){
+    glb.escala=+(glb.largura/Math.max(glb.cru.x, glb.cru.z)).toFixed(4);
+    glb.y=-glb.cru.minY*glb.escala;
+    const eE=document.getElementById('glbE'); if(eE) eE.value=glb.escala;
+    const eY=document.getElementById('glbY'); if(eY) eY.value=glb.y;
+  }
+  posicionarGLB(); sincronizar(); tSombra=0;
+});
+
+[['glbE','escala'],['glbR','rot'],['glbX','x'],['glbY','y'],['glbZ','z']]
+.forEach(([id,k])=>{
+  const el=document.getElementById(id);
+  if(!el) return;
+  el.addEventListener('input', ev=>{
+    glb[k]=+ev.target.value;
+    if(k==='escala' && glb.cru){
+      glb.largura=+(Math.max(glb.cru.x, glb.cru.z)*glb.escala).toFixed(1);
+      const eL=document.getElementById('glbL');
+      if(eL) eL.value=Math.min(+eL.max, glb.largura);
+    }
+    posicionarGLB(); sincronizar(); tSombra=0;
   });
 });
+
+gid('glbAterrar').onclick = ()=>{
+  if(!glb.cru) return;
+  glb.y=-glb.cru.minY*glb.escala;
+  const eY=document.getElementById('glbY'); if(eY) eY.value=glb.y;
+  posicionarGLB(); sincronizar(); tSombra=0;
+};
+
+gid('glbArrastar').onclick = ()=>{
+  arrastarGLB=!arrastarGLB;
+  const b=document.getElementById('glbArrastar');
+  if(b){
+    b.classList.toggle('pri', arrastarGLB);
+    b.textContent = arrastarGLB ? 'Arrastando — tocar para parar' : 'Arrastar na cena';
+  }
+  if(arrastarGLB){
+    moverCasa=false; gid('btnCasa').classList.remove('on');
+    panMode=false;  gid('btnMover').classList.remove('on');
+    medindo=false;  gid('btnMedir').classList.remove('on'); limparMedida();
+    gid('panel').classList.add('oculto');
+    gid('abrir').classList.add('on');
+  }
+};
+
 gid('glbRemover').onclick = ()=>{
   if(modeloGLB){ scene.remove(modeloGLB); modeloGLB=null; }
+  glb.cru=null; arrastarGLB=false;
   gid('ctrlGlb').style.display='none';
   gid('notaGlb').textContent='Modelo removido.';
   tSombra=0;
 };
+
+function pegarGLB(cx,cy){
+  if(!modeloGLB) return null;
+  const r=new THREE.Raycaster();
+  r.setFromCamera(new THREE.Vector2((cx/innerWidth)*2-1, -(cy/innerHeight)*2+1), camera);
+  if(!arrastarGLB && !r.intersectObject(modeloGLB, true).length) return null;
+  const alvo=new THREE.Vector3();
+  if(!r.ray.intersectPlane(new THREE.Plane(EIXO_Y, -glb.y), alvo)) return null;
+  return {tipo:'glb', off:new THREE.Vector3(glb.x-alvo.x, 0, glb.z-alvo.z), y:glb.y};
+}
+function moverGLBPara(cx,cy){
+  const r=new THREE.Raycaster();
+  r.setFromCamera(new THREE.Vector2((cx/innerWidth)*2-1, -(cy/innerHeight)*2+1), camera);
+  const alvo=new THREE.Vector3();
+  if(!r.ray.intersectPlane(new THREE.Plane(EIXO_Y, -arrastoCasa.y), alvo)) return;
+  glb.x=+(alvo.x+arrastoCasa.off.x).toFixed(2);
+  glb.z=+(alvo.z+arrastoCasa.off.z).toFixed(2);
+  posicionarGLB();
+}
 
 /* ===================== conta de energia ===================== */
 let CONTA=null;
