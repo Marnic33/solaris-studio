@@ -4,6 +4,8 @@ import { buscarIrradiacao, buscarCEP } from './nucleo/dados.js';
 import * as E from './nucleo/eletrico.js';
 import * as CAT from './nucleo/catalogo.js';
 import * as PJ from './nucleo/projetos.js';
+import * as EC from './nucleo/economia.js';
+import { gerarRelatorio } from './nucleo/relatorio.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { lerConta, lerDatasheet } from './nucleo/dados.js';
 import './estilo.css';
@@ -28,6 +30,9 @@ const P = {
   modWp:620, modL:2465, modW:1134, modK:34.6,
   casaX:0, casaZ:0,
   maxFace:{},
+  investimento:0, investAuto:true, distribuidora:'CPFL Piratininga',
+  tarifa:0.95, fioB:0.27, consumo:500, ligacao:'monofasica',
+  anoConexao:2026, inflacao:6, oem:0,
   inversor:'auto', invQtd:1, invQtdAuto:true, moduloId:'jinko-620n', tMin:5, tMaxAmb:32,
   perdas:{sujeira:3, mismatch:2, cabeamento:1.5, reflexao:2.5, degradacao:0.5, indisponibilidade:0.5},
   beiral:0.5, beiralH:0.2, terreno:'grama', murH:0.4, murW:0.15,
@@ -1223,11 +1228,16 @@ const SL=[['comp','comp'],['larg','larg'],['pd','pd'],['incl','incl'],['azi','az
           ['lat','lat'],['lon','lon'],['dia','dia'],['hsp','hsp'],
           ['mwp','modWp'],['ml','modL'],['mw','modW'],['mk','modK'],
           ['bei','beiral'],['beh','beiralH'],['casax','casaX'],['casaz','casaZ'],
-          ['tmin','tMin'],['tmax','tMaxAmb'],['invQtd','invQtd'],['murh','murH'],['murw','murW']];
+          ['tmin','tMin'],['tmax','tMaxAmb'],['invQtd','invQtd'],
+          ['invest','investimento'],['tarifa','tarifa'],['fiob','fioB'],
+          ['consumo','consumo'],['anocon','anoConexao'],['infl','inflacao'],['oem','oem'],['murh','murH'],['murw','murW']];
 SL.forEach(([id,key])=>{
   document.getElementById(id).addEventListener('input', e=>{
     P[key]=+e.target.value;
     if(key==='invQtd') P.invQtdAuto=false;
+    if(key==='investimento') P.investAuto=false;
+    if(['investimento','tarifa','fioB','consumo','anoConexao','inflacao','oem']
+       .includes(key)){ sincronizar(); atualizarEconomia(); return; }
     if(key==='lat'||key==='lon'){
       for(const j in cacheHSP) delete cacheHSP[j];
       for(const j in cacheDia) delete cacheDia[j];
@@ -1317,6 +1327,12 @@ function sincronizar(){
   $('#vLon').textContent=br(P.lon,2);
   $('#vDia').textContent=dataDoDia(P.dia);
   $('#vHsp').textContent=br(P.hsp,2);
+  gid('vTarifa').textContent=br(P.tarifa,2);
+  gid('vFioB').textContent=br(P.fioB,2);
+  gid('vConsumo').textContent=br(P.consumo,0)+' kWh';
+  gid('vAnoCon').textContent=P.anoConexao;
+  gid('vInfl').textContent=br(P.inflacao,1)+' %';
+  gid('vOem').textContent='R$ '+br(P.oem,0);
   gid('vGlbE').textContent=br(glb.escala,3)+'×';
   gid('vGlbR').textContent=glb.rot+'°';
   gid('vGlbX').textContent=br(glb.x,1)+' m';
@@ -1580,6 +1596,7 @@ function atualizarResumo(){
   $('#bom').innerHTML=itens.map(l=>`<tr><td>${l[0]}</td><td>${l[1]}</td><td>${l[2]}</td></tr>`).join('');
 
   desenharGrafico();
+  atualizarEconomia();
   $('#rNota').innerHTML=
     `Área de módulos <b>${br(CONT.mod*MOD.L*MOD.W,1)} m²</b> · `+
     `${TIPOS[P.tipo].n}, ${INFO.plano?'plano':P.aguas+' água(s)'}, azimute ${P.azi}° ${bussola(P.azi)}.<br>`+
@@ -2579,6 +2596,90 @@ function atualizarEletrico(){
     (fv.cortePico>0.001?`<br><span class="al">Corte por sobrecarga: ${br(fv.cortePico*100,1)}%.</span>`:'');
 }
 
+/* ===================== economia ===================== */
+let ECON=null;
+function calcularEconomia(){
+  const g = calcularGeracao();
+  const kwp = CONT.mod*MOD.Wp/1000;
+  if(!kwp){ ECON=null; return null; }
+  if(P.investAuto){
+    P.investimento = EC.estimarInvestimento(kwp).comMargem;
+    const sl=gid('invest'); if(sl && sl.value!==undefined) sl.value=P.investimento;
+  }
+  ECON = EC.fluxoDeCaixa({
+    investimento: P.investimento,
+    geracaoAnual: g.total,
+    consumoMensal: P.consumo,
+    tarifa: P.tarifa, tarifaFioB: P.fioB,
+    ligacao: P.ligacao, anoConexao: P.anoConexao,
+    inflacaoEnergia: P.inflacao/100,
+    oem: P.oem,
+    trocaInversor: {ano:12, custo: Math.round(P.investimento*0.12)}
+  });
+  ECON.kwp = kwp; ECON.geracaoAnual = g.total;
+  return ECON;
+}
+
+function atualizarEconomia(){
+  chips(gid('distrib'), Object.keys(EC.TARIFAS).map(k=>[k, k.replace('CPFL ','')]),
+    k=>P.distribuidora===k, k=>{
+      P.distribuidora=k;
+      const t=EC.TARIFAS[k];
+      P.tarifa=t.total; P.fioB=t.fioB;
+      const a=gid('tarifa'), b=gid('fiob');
+      if(a.value!==undefined) a.value=t.total;
+      if(b.value!==undefined) b.value=t.fioB;
+      sincronizar(); atualizarEconomia();
+    });
+  chips(gid('ligacao'), [['monofasica','Monofásica'],['bifasica','Bifásica'],['trifasica','Trifásica']],
+    k=>P.ligacao===k, k=>{ P.ligacao=k; sincronizar(); atualizarEconomia(); });
+
+  const r = calcularEconomia();
+  if(!r){
+    gid('econResumo').innerHTML='<div class="note">Posicione módulos para calcular.</div>';
+    gid('econFluxo').innerHTML=''; return;
+  }
+
+  const paga = r.paybackSimples!==null;
+  gid('econResumo').innerHTML=
+    `<div class="cartao ${paga?'':'alto'}">`+
+    `<h4>${paga?`Retorno em ${br(r.paybackSimples,1)} anos`:'Não se paga no horizonte'}</h4>`+
+    `<p>Economia de <b>R$ ${br(r.economiaMes1,0)}/mês</b> no primeiro ano.<br>`+
+    `TIR <b>${r.tir!==null?br(r.tir,1)+'% a.a.':'—'}</b> · `+
+    `VPL 25 anos <b>R$ ${br(r.vpl,0)}</b><br>`+
+    `Payback descontado ${r.paybackDescontado||'—'} anos · `+
+    `custo da energia gerada <b>R$ ${br(r.lcoe,3)}/kWh</b> contra `+
+    `R$ ${br(P.tarifa,2)} da concessionária.</p></div>`+
+    `<div class="cartao"><h4>Em 25 anos</h4><p>`+
+    `Economia acumulada <b>R$ ${br(r.economia25,0)}</b><br>`+
+    `Custo do Fio B <b>R$ ${br(r.fioB25,0)}</b> — `+
+    `${br(r.fioB25/Math.max(1,r.economia25+r.fioB25)*100,0)}% do que seria sem a Lei 14.300.</p></div>`;
+
+  const max=Math.max(...r.linhas.map(l=>Math.abs(l.acumulado)),1);
+  gid('econFluxo').innerHTML=
+    `<table><thead><tr><th>Ano</th><th>Fio B</th><th>Economia</th><th>Acumulado</th></tr></thead><tbody>`+
+    r.linhas.filter(l=>l.ano<=5||l.ano%5===0).map(l=>
+      `<tr><td>${l.anoCalendario}</td>`+
+      `<td>${br(l.percentualFioB*100,0)}%</td>`+
+      `<td>${br(l.liquido,0)}</td>`+
+      `<td style="color:${l.acumulado<0?'#e0644a':'#49c6c0'}">${br(l.acumulado,0)}</td></tr>`).join('')+
+    `</tbody></table>`;
+
+  const dispKwh = EC.DISPONIBILIDADE[P.ligacao]*12;
+  gid('econNota').innerHTML=
+    `Geração ${br(r.geracaoAnual,0)} kWh/ano contra consumo ${br(P.consumo*12,0)} kWh/ano.<br>`+
+    `Ligação ${P.ligacao}: <b>${br(dispKwh/12,0)} kWh/mês</b> de custo de disponibilidade `+
+    `nunca são compensados.<br>`+
+    `<b>Estimativa</b>, não proposta comercial. Tarifas variam com bandeira, impostos e `+
+    `revisão tarifária — confirme na conta do cliente antes de apresentar.`;
+
+  gid('vInvest').textContent='R$ '+br(P.investimento,0)+(P.investAuto?' (auto)':'');
+  gid('notaInvest').innerHTML= CONT.mod
+    ? `${br(P.investimento/Math.max(0.01,r.kwp),0)} R$/kWp para ${br(r.kwp,2)} kWp. `+
+      `<span style="opacity:.7">Mexer no valor desliga o cálculo automático.</span>`
+    : '';
+}
+
 /* ===================== análise por IA ===================== */
 function coletarProjeto(){
   const g = geracaoMensal();
@@ -2626,6 +2727,15 @@ function coletarProjeto(){
       avisos: ELE.arranjo.avisos || [],
       pr_medio_pct: +(PR_MEDIO()*100).toFixed(1),
       perdas_pct: P.perdas
+    } : null,
+    economia: ECON ? {
+      investimento_rs: P.investimento,
+      tarifa_rs_kwh: P.tarifa, fio_b_rs_kwh: P.fioB,
+      ano_conexao: P.anoConexao, ligacao: P.ligacao,
+      consumo_mensal_kwh: P.consumo,
+      payback_anos: ECON.paybackSimples, tir_pct: ECON.tir,
+      vpl_25anos_rs: ECON.vpl, economia_mes1_rs: ECON.economiaMes1,
+      custo_fio_b_25anos_rs: ECON.fioB25, lcoe_rs_kwh: ECON.lcoe
     } : null,
     perdas:{sombreamento_anual_pct: PERDAS.valido ? +(PERDAS.total*100).toFixed(1) : null,
       calculado: PERDAS.valido},
@@ -2744,6 +2854,278 @@ gid('btnIrrad').onclick = async ()=>{
   }
   b.disabled=false; b.textContent='Buscar irradiação real';
 };
+
+/* ===================== briefing para orçamento ===================== */
+/**
+ * Gera um resumo técnico em texto para colar no projeto de orçamento.
+ * O simulador entrega o que é físico e elétrico; a precificação — margem,
+ * mão de obra, tributos — fica no projeto, com uma fonte de verdade só.
+ */
+function montarBriefing(){
+  const G=calcularGeracao();
+  const a=ELE.valido?ELE.arranjo:null;
+  const mod=CAT.acharModulo(P.moduloId)||{};
+  const kwp=CONT.mod*MOD.Wp/1000;
+  const C=CONTA||{};
+  const L=[];
+  const p=(...t)=>L.push(t.join(''));
+  const ou=(v,alt)=>(v===undefined||v===null||v==='')?alt:v;
+
+  p('# ETAPA 1 CONCLUÍDA — DIMENSIONAMENTO E ESPECIFICAÇÃO');
+  p('Origem: Solaris Studio · simulação 3D com sombreamento e validação elétrica.');
+  p('Pendente: consultar a Aldo, precificar e gerar o PDF (Etapa 2).');
+  p('');
+
+  /* ---------------- 1. cliente e unidade consumidora ---------------- */
+  p('## 1. CLIENTE E UNIDADE CONSUMIDORA');
+  p('Projeto: ', gid('pjNome').value.trim()||'sem nome');
+  p('Cliente: ', ou(gid('pjCliente').value.trim() || C.titular, 'A CONFIRMAR'));
+  p('Endereço: ', ou(C.endereco, (gid('cep').value||'').trim() ||
+      `lat ${br(P.lat,4)}, lon ${br(P.lon,4)}`),
+      C.bairro?`, ${C.bairro}`:'');
+  p('Cidade/UF: ', ou(C.cidade,'—'), '/', ou(C.uf,'—'));
+  p('Concessionária: ', ou(C.distribuidora, 'A CONFIRMAR'));
+  p('UC: ', ou(C.unidade_consumidora, 'A CONFIRMAR'));
+  p('Ligação: ', ou(C.tipo_ligacao, 'A CONFIRMAR'),
+    C.tensao_v?` · ${C.tensao_v} V`:'',
+    C.disjuntor_a?` · disjuntor ${C.disjuntor_a} A`:'');
+  p('Classe/subgrupo: ', ou(C.classe,'—'), ' / ', ou(C.subgrupo,'—'));
+  p('Data: ', gid('pjData').value.trim()||new Date().toISOString().slice(0,10));
+  if(!CONTA) p('ATENÇÃO: conta de energia não foi lida. Dados acima são estimativa.');
+  p('');
+
+  /* ---------------- 2. consumo e tarifa ---------------- */
+  p('## 2. CONSUMO E TARIFA');
+  if(CONTA){
+    p('Consumo médio 12 meses: ', br(C.media_kwh||C.consumo_mes_kwh||0,0), ' kWh/mês');
+    p('Mês faturado: ', br(C.consumo_mes_kwh||0,0), ' kWh',
+      C.valor_total_rs?` · R$ ${br(C.valor_total_rs,2)}`:'');
+    if(Array.isArray(C.historico_kwh)&&C.historico_kwh.length)
+      p('Histórico (kWh): ', C.historico_kwh.map(h=>`${h.mes} ${Math.round(h.kwh)}`).join(' | '));
+    p('Tarifa total com tributos: R$ ', br(ou(C.tarifa_kwh_rs,P.tarifa),4), '/kWh');
+    if(C.tarifa_te_rs)   p('TE: R$ ', br(C.tarifa_te_rs,4), '/kWh');
+    if(C.tarifa_tusd_rs) p('TUSD: R$ ', br(C.tarifa_tusd_rs,4), '/kWh');
+    p('TUSD Fio B: R$ ', br(ou(C.tusd_fio_b_rs,P.fioB),4), '/kWh',
+      C.tusd_fio_b_rs?'':' (estimado — CONFIRMAR na conta)');
+    p('COSIP: ', C.cosip_rs!=null?`R$ ${br(C.cosip_rs,2)}/mês`:'NÃO IDENTIFICADO — CONFIRMAR');
+    if(C.icms_pct) p('ICMS: ', br(C.icms_pct,1), '%');
+    if(C.bandeira) p('Bandeira: ', C.bandeira);
+    if(C.ja_tem_geracao) p('ATENÇÃO: a conta já indica geração própria.');
+  } else {
+    p('Consumo considerado: ', br(P.consumo,0), ' kWh/mês (informado manualmente)');
+    p('Tarifa: R$ ', br(P.tarifa,4), '/kWh · Fio B R$ ', br(P.fioB,4), '/kWh');
+    p('COSIP: NÃO INFORMADO — descontar antes de calcular economia.');
+  }
+  const disp = {monofasica:30, bifasica:50, trifasica:100}[C.tipo_ligacao||P.ligacao]||30;
+  p('Custo de disponibilidade: ', disp, ' kWh/mês (não compensável)');
+  p('');
+
+  /* ---------------- 3. sistema dimensionado ---------------- */
+  p('## 3. SISTEMA DIMENSIONADO');
+  p('Potência: ', br(kwp,2), ' kWp');
+  p('Módulos: ', CONT.mod, ' × ', ou(mod.fabricante,''), ' ', P.modWp, ' Wp',
+    mod.linha?` ${mod.linha}`:'');
+  p('Dimensões do módulo: ', P.modL, ' × ', P.modW, ' × ',
+    ou(mod.espessura,30), ' mm · ', br(P.modK,1), ' kg');
+  if(mod.eficiencia) p('Eficiência do módulo: ', br(mod.eficiencia,1), '%');
+  if(mod.garantiaPotencia) p('Garantia de potência: ', mod.garantiaPotencia, ' anos');
+  p('Geração estimada: ', br(G.media,0), ' kWh/mês · ', br(G.total,0), ' kWh/ano');
+  p('Geração mês a mês: ', G.meses.map(v=>Math.round(v)).join(', '));
+  const consumoRef = C.media_kwh||C.consumo_mes_kwh||P.consumo;
+  if(consumoRef) p('Compensação: ', br(G.media/consumoRef*100,0),
+    '% do consumo médio');
+  p('Irradiação: ', P.hspMes?P.fonteHsp:`HSP ${br(P.hsp,2)} informado`);
+  p('Desempenho do sistema (PR): ', br(PR_MEDIO()*100,1), '%');
+  if(PERDAS.valido) p('Perda por sombreamento: ', br(PERDAS.total*100,1),
+    '% (geométrica; efeito elétrico tende a ser maior)');
+  p('Observação: a geração acima já considera temperatura, perdas e sombreamento 3D.');
+  p('');
+
+  /* ---------------- 4. compatibilidade elétrica ---------------- */
+  p('## 4. AUDITORIA DE COMPATIBILIDADE');
+  if(a && a.viavel){
+    const i=ELE.inversor;
+    p('Inversor: ', ELE.qtd>1?`${ELE.qtd} × `:'', i.nome, ' — ',
+      br(i.ca/1000,2), ' kW ', i.fases===3?'trifásico':'monofásico',
+      ' · ', ou(i.tipo,'string'));
+    p('Fabricante: ', ou(i.fabricante,'—'),
+      i.distribuidor?` · ${i.distribuidor}`:'');
+    p('Aceita bateria: ', i.baterias?'SIM (híbrido)':'NÃO (on-grid puro)');
+    p('Arranjo: ', a.micro
+      ? `${a.unidades} microinversores · ${a.distribuicao.join(' + ')} módulos`
+      : `${a.strings} string(s) de ${a.comprimentos.join(' + ')} módulos`);
+    p('FDI: ', br(a.fdi*100,0), '% (CC ', br((a.potenciaCC||0)/1000,2),
+      ' kWp / CA ', br((a.potenciaCA||i.ca)/1000,2), ' kW)');
+    p('VERIFICADO — Voc a ', P.tMin, '°C: ', br(a.validacao.vocFrio,0),
+      ' V contra máximo de ', i.vMax, ' V',
+      a.validacao.vocFrio < i.vMax ? ' [OK]' : ' [FALHA]');
+    p('VERIFICADO — Vmp a ', br(ELE.tCelMax,0), '°C: ', br(a.validacao.vmpQuente,0),
+      ' V contra mínimo de MPPT ', i.vMin, ' V',
+      a.validacao.vmpQuente > i.vMin ? ' [OK]' : ' [FALHA]');
+    p('VERIFICADO — corrente por entrada: ', br(ELE.modulo.imp,1),
+      ' A contra máximo ', i.iMaxMppt, ' A',
+      ELE.modulo.imp < i.iMaxMppt ? ' [OK]' : ' [FALHA]');
+    (a.avisos||[]).forEach(x=>p('AVISO: ', x));
+    if(!i.baterias)
+      p('Para cenário de backup, este inversor NÃO serve — trocar por híbrido.');
+  } else {
+    p('Inversor não dimensionado ou arranjo inviável.');
+    if(a && a.motivo) p('Motivo: ', a.motivo);
+  }
+  p('');
+
+  /* ---------------- 5. instalação e materiais ---------------- */
+  p('## 5. INSTALAÇÃO E MATERIAIS');
+  p('Superfície: ', TIPOS[P.tipo].n, ' · ', INFO.plano?'plano':`${P.aguas} água(s)`);
+  p('Inclinação: ', INFO.plano?P.tilt:P.incl, '° · orientação ', P.azi, '° ', bussola(P.azi));
+  p('Estrutura: ', FIXES[fixAtual()]);
+  p('Área ocupada: ', br(CONT.mod*MOD.L*MOD.W,1), ' m² · peso ',
+    br(CONT.mod*MOD.kg,0), ' kg');
+  p('Pé-direito: ', br(P.pd,1), ' m');
+  p('Quantidades reais contadas na simulação 3D (não estimativa por regra de bolso):');
+  lerMateriais().forEach(m=>p('  - ', m[0], ': ', m[2],
+    (m[1]&&m[1]!=='—')?` (${m[1]})`:''));
+  if(OBS.length){
+    p('Obstáculos levantados:');
+    OBS.forEach(o=>p('  - ', OBSTIPOS[o.tipo].n, ': ', br(o.l,1), ' × ',
+      br(o.p,1), ' m, altura ', br(o.h,1), ' m'));
+  }
+  p('');
+
+  /* ---------------- 6. o que falta ---------------- */
+  p('## 6. PARA A ETAPA 2 (precificação)');
+  p('Consultar a Aldo e informar:');
+  p('  - custo do kit (módulos + inversor + estrutura)');
+  p('  - frete');
+  p('  - mão de obra desta obra');
+  p('  - margem a aplicar');
+  p('Custos fixos de referência: homologação R$750, visita R$300',
+    (a && !a.micro)?', string box R$350':'');
+  p('Imposto de 9,25% incide somente sobre a margem.');
+  p('Descontar da economia: COSIP, Fio B e custo de disponibilidade (',
+    disp, ' kWh).');
+  p('Aplicar redutor de 10 a 15% sobre a geração teórica na apresentação ao cliente.');
+  p('');
+  const nota=gid('pjNota').value.trim();
+  if(nota){ p('## ANOTAÇÕES DE CAMPO'); p(nota); p(''); }
+  p('---');
+  p('Solaris Studio · Trinity Solaris Brasil · ',
+    new Date().toLocaleString('pt-BR'));
+  return L.join('\n');
+}
+
+gid('btnBriefing').onclick = async ()=>{
+  if(!CONT.mod){ alert('Posicione módulos antes de gerar o briefing.'); return; }
+  const texto=montarBriefing();
+  const b=gid('btnBriefing');
+  try{
+    await navigator.clipboard.writeText(texto);
+    b.textContent='Copiado — cole no projeto';
+    setTimeout(()=>{ b.textContent='Copiar para orçamento'; }, 2600);
+  }catch(_){
+    /* sem permissão de área de transferência: baixa como arquivo */
+    const blob=new Blob([texto],{type:'text/plain;charset=utf-8'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='briefing-orcamento.txt';
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+    b.textContent='Baixado como arquivo';
+    setTimeout(()=>{ b.textContent='Copiar para orçamento'; }, 2600);
+  }
+};
+
+/* ===================== proposta em PDF ===================== */
+gid('btnPdf').onclick = async ()=>{
+  const b=gid('btnPdf');
+  if(!CONT.mod){ alert('Posicione módulos antes de gerar a proposta.'); return; }
+  b.disabled=true; b.textContent='Montando…';
+  try{
+    /* enquadra e captura a cena sem os elementos de interface */
+    const guardaCotas=gCotas.visible, guardaAux=gAux.visible;
+    gCotas.visible=false; gAux.visible=false;
+    enquadrar(); renderer.render(scene,camera);
+    const imagem=renderer.domElement.toDataURL('image/jpeg',0.86);
+    gCotas.visible=guardaCotas; gAux.visible=guardaAux;
+
+    const G=calcularGeracao();
+    const eco=calcularEconomia();
+    const a=ELE.valido?ELE.arranjo:null;
+
+    const doc=gerarRelatorio({
+      projeto:{
+        nome: gid('pjNome').value.trim() || 'Projeto fotovoltaico',
+        cliente: gid('pjCliente').value.trim(),
+        data: gid('pjData').value.trim()
+      },
+      local:{ endereco: (gid('cep').value||'').trim() ||
+              `Latitude ${br(P.lat,4)}, longitude ${br(P.lon,4)}` },
+      sistema:{
+        modulos: CONT.mod,
+        moduloNome: (CAT.acharModulo(P.moduloId)||{}).fabricante
+          ? `${CAT.acharModulo(P.moduloId).fabricante} ${P.modWp} W`
+          : `${P.modWp} W`,
+        kwp: CONT.mod*MOD.Wp/1000,
+        area: CONT.mod*MOD.L*MOD.W,
+        peso: CONT.mod*MOD.kg,
+        inversor: ELE.valido
+          ? `${ELE.qtd>1?ELE.qtd+' × ':''}${ELE.inversor.nome} (${br(ELE.inversor.ca/1000,2)} kW)`
+          : '—',
+        strings: a && a.viavel
+          ? (a.micro ? `${a.unidades} microinversores · ${a.distribuicao.join(' + ')} módulos`
+                     : `${a.strings} string(s) de ${a.comprimentos.join(' + ')} módulos`)
+          : '—',
+        fdi: a && a.viavel ? a.fdi*100 : null,
+        fixacao: FIXES[fixAtual()],
+        inclinacao: INFO.plano ? P.tilt : P.incl,
+        orientacao: `${P.azi}° ${bussola(P.azi)}`
+      },
+      geracao:{
+        meses: G.meses.map(v=>Math.round(v)),
+        total: G.total, media: G.media,
+        fonte: P.hspMes ? P.fonteHsp : `HSP ${br(P.hsp,2)} estimado`,
+        perdaSombra: PERDAS.valido ? PERDAS.total*100 : null,
+        pr: PR_MEDIO()*100
+      },
+      economia: eco ? {
+        investimento: eco.investimento,
+        economiaAno1: eco.economiaAno1 ?? (eco.linhas&&eco.linhas[0]?eco.linhas[0].liquido:0),
+        economiaMes1: eco.economiaMes1,
+        paybackSimples: eco.paybackSimples,
+        paybackDescontado: eco.paybackDescontado,
+        tir: eco.tir, vpl: eco.vpl,
+        economia25: eco.economia25, fioB25: eco.fioB25, lcoe: eco.lcoe,
+        linhas: eco.linhas,
+        anoConexao: P.anoConexao || new Date().getFullYear(),
+        pctFioBInicial: eco.linhas && eco.linhas[0] ? eco.linhas[0].percentualFioB : 0,
+        tarifa: P.tarifa || 0.98,
+        inflacao: (P.inflacao||6)/100
+      } : null,
+      materiais: lerMateriais(),
+      imagem
+    });
+
+    const nome=(gid('pjNome').value.trim()||'proposta')
+      .toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+      .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40);
+    doc.save(`${nome||'proposta'}-solaris.pdf`);
+  }catch(err){
+    console.error(err);
+    alert('Não consegui gerar o PDF: '+err.message);
+  }
+  b.disabled=false; b.textContent='Gerar proposta PDF';
+};
+
+/* lê a lista de materiais já montada na tela */
+function lerMateriais(){
+  const linhas=[];
+  document.querySelectorAll('#bom tr').forEach(tr=>{
+    const c=tr.querySelectorAll('td');
+    if(c.length>=3) linhas.push([
+      c[0].textContent.trim(), c[1].textContent.trim(), c[2].textContent.trim()]);
+  });
+  return linhas;
+}
 
 /* ===================== exportar ===================== */
 function baixar(blob,nome){
