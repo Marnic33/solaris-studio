@@ -2367,6 +2367,28 @@ liga('arqConta','onchange', async e=>{
 });
 
 function mostrarConta(d){
+  /* Fio B: prioriza o valor discriminado na conta; se não vier, usa a
+     referência da distribuidora e registra a origem para o briefing. */
+  if(d.tusd_fio_b_rs){
+    P.fioB = +d.tusd_fio_b_rs;
+    P.fioBOrigem = 'discriminado na conta';
+  } else {
+    const ref = CAT.fioBDe(d.distribuidora);
+    if(ref){
+      P.fioB = ref.valor;
+      P.fioBOrigem = `referência ${ref.nome} — CONFIRMAR na conta`;
+    } else {
+      P.fioBOrigem = 'estimativa genérica — CONFIRMAR na conta';
+    }
+  }
+  if(d.tarifa_kwh_rs) P.tarifa = +d.tarifa_kwh_rs;
+  if(d.cosip_rs != null) P.cosip = +d.cosip_rs;
+  if(d.tipo_ligacao) P.ligacao = d.tipo_ligacao;
+  const elFioB = document.getElementById('fioB');
+  if(elFioB) elFioB.value = P.fioB;
+  const elTar = document.getElementById('tarifa');
+  if(elTar && d.tarifa_kwh_rs) elTar.value = P.tarifa;
+
   const media = Number(d.media_kwh || d.consumo_mes_kwh || 0);
   const hsp = P.hspMes ? P.hspMes.reduce((a,b)=>a+b,0)/12 : P.hsp;
   const dim = CAT.dimensionarPorConsumo(media, hsp, P.modWp, PR_MEDIO());
@@ -2905,15 +2927,17 @@ function montarBriefing(){
     p('Tarifa total com tributos: R$ ', br(ou(C.tarifa_kwh_rs,P.tarifa),4), '/kWh');
     if(C.tarifa_te_rs)   p('TE: R$ ', br(C.tarifa_te_rs,4), '/kWh');
     if(C.tarifa_tusd_rs) p('TUSD: R$ ', br(C.tarifa_tusd_rs,4), '/kWh');
-    p('TUSD Fio B: R$ ', br(ou(C.tusd_fio_b_rs,P.fioB),4), '/kWh',
-      C.tusd_fio_b_rs?'':' (estimado — CONFIRMAR na conta)');
+    p('TUSD Fio B: R$ ', br(ou(C.tusd_fio_b_rs,P.fioB),4), '/kWh — ',
+      P.fioBOrigem || (C.tusd_fio_b_rs?'discriminado na conta':'estimado, CONFIRMAR'));
     p('COSIP: ', C.cosip_rs!=null?`R$ ${br(C.cosip_rs,2)}/mês`:'NÃO IDENTIFICADO — CONFIRMAR');
     if(C.icms_pct) p('ICMS: ', br(C.icms_pct,1), '%');
     if(C.bandeira) p('Bandeira: ', C.bandeira);
     if(C.ja_tem_geracao) p('ATENÇÃO: a conta já indica geração própria.');
   } else {
     p('Consumo considerado: ', br(P.consumo,0), ' kWh/mês (informado manualmente)');
-    p('Tarifa: R$ ', br(P.tarifa,4), '/kWh · Fio B R$ ', br(P.fioB,4), '/kWh');
+    p('Tarifa: R$ ', br(P.tarifa,4), '/kWh');
+    p('TUSD Fio B: R$ ', br(P.fioB,4), '/kWh — ',
+      P.fioBOrigem || 'informado manualmente');
     p('COSIP: NÃO INFORMADO — descontar antes de calcular economia.');
   }
   const disp = {monofasica:30, bifasica:50, trifasica:100}[C.tipo_ligacao||P.ligacao]||30;
@@ -3004,6 +3028,10 @@ function montarBriefing(){
   p('Imposto de 9,25% incide somente sobre a margem.');
   p('Descontar da economia: COSIP, Fio B e custo de disponibilidade (',
     disp, ' kWh).');
+  if(!(C.tusd_fio_b_rs))
+    p('PENDENTE: confirmar o TUSD Fio B real na conta — o valor usado é referência.');
+  if(C.cosip_rs == null)
+    p('PENDENTE: confirmar o valor da COSIP na conta.');
   p('Aplicar redutor de 10 a 15% sobre a geração teórica na apresentação ao cliente.');
   p('');
   const nota=gid('pjNota').value.trim();
