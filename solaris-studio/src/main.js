@@ -2037,7 +2037,9 @@ gid('pjSalvar').onclick = async ()=>{
       `${br(p.potencia,2)} kWp.`;
     listarProjetos();
     const r = await PJ.sincronizar(p);
-    if(r.ok) gid('pjMsg').innerHTML += ' Sincronizado com a nuvem.';
+    gid('pjMsg').innerHTML += r.ok
+      ? ' <b>Enviado para a nuvem</b> — dá para abrir em outro aparelho.'
+      : ` <span style="opacity:.7">Salvo só neste aparelho (${r.motivo}).</span>`;
   }catch(err){
     gid('pjMsg').innerHTML = `<span class="al">Não consegui salvar:</span> ${err.message}`;
   }
@@ -2079,6 +2081,48 @@ function listarProjetos(){
   });
 }
 
+gid('pjNuvem').onclick = async ()=>{
+  const b=gid('pjNuvem'), cx=gid('pjListaNuvem');
+  b.disabled=true; b.textContent='Buscando…';
+  try{
+    const lista = await PJ.listarNuvem();
+    if(!lista.length){
+      cx.innerHTML='<div class="note">Nenhum projeto na nuvem ainda. '+
+        'Salve um projeto para enviá-lo.</div>';
+    } else {
+      cx.innerHTML=`<table><thead><tr><th>Projeto</th><th>kWp</th><th></th></tr></thead><tbody>`+
+        lista.map(p=>`<tr><td><span class="k">${p.nome||p.id}</span>`+
+          (p.cliente?`<br><span style="opacity:.6">${p.cliente}</span>`:'')+
+          `<br><span style="opacity:.5;font-size:10px">`+
+          `${String(p.atualizadoEm||'').slice(0,10)}</span></td>`+
+          `<td>${br(p.potencia||0,2)}</td>`+
+          `<td><button class="chip" data-nuvem="${p.id}">abrir</button></td></tr>`).join('')+
+        `</tbody></table>`;
+      cx.querySelectorAll('[data-nuvem]').forEach(bt=>bt.onclick=async ()=>{
+        bt.textContent='…';
+        try{
+          const p = await PJ.baixarNuvem(bt.dataset.nuvem);
+          aplicarEstado(p.estado);
+          PJ.salvarProjeto(p);
+          projetoAtual={id:p.id, nome:p.nome};
+          gid('pjNome').value=p.nome||''; gid('pjCliente').value=p.cliente||'';
+          gid('pjData').value=(p.data||'').slice(0,10); gid('pjNota').value=p.nota||'';
+          listarProjetos();
+          gid('pjMsg').innerHTML=`Baixado da nuvem: <b>${p.nome}</b>.`;
+        }catch(e){
+          gid('pjMsg').innerHTML=`<span class="al">${e.message}</span>`;
+        }
+        bt.textContent='abrir';
+      });
+    }
+  }catch(err){
+    cx.innerHTML=`<div class="note"><span class="al">${err.message}</span><br>`+
+      `Se a nuvem ainda não está configurada, defina <b>SUPABASE_URL</b> e `+
+      `<b>SUPABASE_KEY</b> nas variáveis de ambiente da Vercel.</div>`;
+  }
+  b.disabled=false; b.textContent='Buscar projetos da nuvem';
+};
+
 gid('pjExportar').onclick = ()=>{
   if(!exigirPJ()) return;
   const p = montarProjeto();
@@ -2109,6 +2153,12 @@ gid('btnGlb').onclick = ()=> gid('arqGlb').click();
 gid('arqGlb').onchange = e=>{
   const f=e.target.files && e.target.files[0]; if(!f) return;
   const nota=gid('notaGlb');
+  if(!/\.(glb|gltf)$/i.test(f.name)){
+    nota.innerHTML=`<span class="al">"${f.name}" não é GLB nem glTF.</span> `+
+      `Formatos CAD (STEP, IFC, SKP, DWG) precisam ser convertidos antes — `+
+      `o Blender e o FreeCAD fazem isso de graça.`;
+    e.target.value=''; return;
+  }
   nota.textContent='Carregando modelo…';
   const url=URL.createObjectURL(f);
   new GLTFLoader().load(url, g=>{
