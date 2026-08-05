@@ -117,11 +117,73 @@ export function faixaSerie(modulo, inversor, tMin = 5, tMax = 70) {
 }
 
 /**
- * Monta o arranjo: divide os módulos em strings equilibradas entre os MPPTs.
+ * Arranjo com microinversores.
+ *
+ * Cada MPPT recebe um módulo, então a conta é de quantas unidades são
+ * necessárias — não de strings. É comum sobrar entrada na última unidade.
  */
-export function montarArranjo(nModulos, modulo, inversor, tMin = 5, tMax = 70) {
+export function montarArranjoMicro(nModulos, modulo, inversor) {
+  const porUnidade = inversor.mppt * (inversor.stringsPorMppt || 1);
+  const unidades = Math.ceil(nModulos / porUnidade);
+  const distribuicao = [];
+  let restam = nModulos;
+  for (let i = 0; i < unidades; i++) {
+    const n = Math.min(porUnidade, restam);
+    distribuicao.push(n);
+    restam -= n;
+  }
+
+  const avisos = [];
+  const ocupacao = nModulos / (unidades * porUnidade);
+  const ultima = distribuicao[distribuicao.length - 1];
+  if (ultima < porUnidade)
+    avisos.push(`A última unidade fica com ${ultima} de ${porUnidade} entradas ocupadas. ` +
+                `Entrada livre não atrapalha, mas é capacidade paga sem uso.`);
+
+  /* cada módulo trabalha sozinho no seu MPPT: a checagem é de tensão do módulo */
+  const vocFrio = vocNaTemp(modulo, 5);
+  const vmpQuente = vmpNaTemp(modulo, 70);
+  const erros = [];
+  if (vocFrio > inversor.vMax)
+    erros.push(`Voc do módulo a frio (${vocFrio.toFixed(0)} V) passa do limite de ` +
+               `${inversor.vMax} V deste microinversor.`);
+  if (vmpQuente < inversor.vMin)
+    erros.push(`Vmp do módulo no calor (${vmpQuente.toFixed(0)} V) fica abaixo do MPPT ` +
+               `mínimo de ${inversor.vMin} V.`);
+  if (modulo.isc > inversor.iMaxMppt)
+    erros.push(`Corrente do módulo (${modulo.isc} A) passa do limite de ` +
+               `${inversor.iMaxMppt} A por entrada.`);
+
+  const potenciaCC = nModulos * modulo.wp;
+  const potenciaCA = unidades * inversor.ca;
+  const fdi = potenciaCC / potenciaCA;
+  if (fdi > 1.35) avisos.push(
+    `Sobrecarga de ${((fdi - 1) * 100).toFixed(0)}% por unidade — considere um ` +
+    `microinversor de potência maior.`);
+
+  return {
+    viavel: erros.length === 0,
+    micro: true,
+    motivo: erros.join(' '),
+    unidades, porUnidade, distribuicao,
+    comprimentos: distribuicao,
+    strings: unidades,
+    entradasUsadas: nModulos, entradasTotais: unidades * porUnidade,
+    ocupacao,
+    validacao: { nSerie: 1, vocFrio, vmpQuente, erros, avisos: [] },
+    potenciaCC, potenciaCA, fdi, avisos,
+    correnteTotal: +(modulo.imp * nModulos).toFixed(1)
+  };
+}
+
+/**
+ * Monta o arranjo: divide os módulos em strings equilibradas entre os MPPTs.
+ * Aceita mais de uma unidade do mesmo inversor.
+ */
+export function montarArranjo(nModulos, modulo, inversor, tMin = 5, tMax = 70, unidades = 1) {
+  if (inversor.micro) return montarArranjoMicro(nModulos, modulo, inversor);
   const faixa = faixaSerie(modulo, inversor, tMin, tMax);
-  const entradas = inversor.mppt * inversor.stringsPorMppt;
+  const entradas = inversor.mppt * inversor.stringsPorMppt * Math.max(1, unidades);
 
   if (faixa.max < faixa.min || faixa.max === 0) {
     return { viavel: false, motivo:
@@ -155,14 +217,19 @@ export function montarArranjo(nModulos, modulo, inversor, tMin = 5, tMax = 70) {
   }
 
   if (!melhor) {
-    return { viavel: false, faixa, motivo:
+    const precisa = Math.ceil(nModulos / (faixa.max * inversor.mppt * inversor.stringsPorMppt));
+    return { viavel: false, faixa, sugestaoUnidades: Math.max(2, precisa), motivo:
       `Não consegui dividir ${nModulos} módulos em até ${entradas} strings de ` +
-      `${faixa.min} a ${faixa.max} módulos. Ajuste a quantidade de módulos ou troque o inversor.` };
+      `${faixa.min} a ${faixa.max} módulos.` +
+      (precisa > unidades
+        ? ` Com ${precisa} unidades deste inversor caberia — aumente a quantidade abaixo.`
+        : ` Ajuste a quantidade de módulos ou troque o inversor.`) };
   }
 
   const comprimentos = melhor.comprimentos || Array(melhor.strings).fill(melhor.nSerie);
   const potenciaCC = nModulos * modulo.wp;
-  const fdi = potenciaCC / inversor.ca;
+  const potenciaCA = inversor.ca * Math.max(1, unidades);
+  const fdi = potenciaCC / potenciaCA;
 
   const avisos = [...(melhor.v.avisos || [])];
   if (fdi > 1.35) avisos.push(
@@ -177,8 +244,9 @@ export function montarArranjo(nModulos, modulo, inversor, tMin = 5, tMax = 70) {
 
   return {
     viavel: true, faixa, comprimentos, strings: comprimentos.length,
+    unidades: Math.max(1, unidades),
     entradasUsadas: comprimentos.length, entradasTotais: entradas,
-    validacao: melhor.v, potenciaCC, fdi, avisos,
+    validacao: melhor.v, potenciaCC, potenciaCA, fdi, avisos,
     correnteTotal: +(modulo.imp * comprimentos.length).toFixed(1)
   };
 }
@@ -222,6 +290,16 @@ export function fatorDesempenho(opcoes) {
     eficienciaInversor: inversor.eficiencia,
     cortePico
   };
+}
+
+/** Quantas unidades de um inversor atendem uma quantidade de módulos. */
+export function unidadesNecessarias(nModulos, modulo, inversor, tMin = 5, tMax = 70) {
+  if (inversor.micro)
+    return Math.ceil(nModulos / (inversor.mppt * (inversor.stringsPorMppt || 1)));
+  const faixa = faixaSerie(modulo, inversor, tMin, tMax);
+  if (faixa.max < 1) return 1;
+  const porUnidade = faixa.max * inversor.mppt * inversor.stringsPorMppt;
+  return Math.max(1, Math.ceil(nModulos / porUnidade));
 }
 
 /** Sugere o inversor mais adequado para uma potência de arranjo. */
