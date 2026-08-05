@@ -121,12 +121,24 @@
       <div class="note" id="notaGlb">Aceita GLB ou glTF. O modelo entra na cena, projeta
         sombra e pode ser posicionado como qualquer objeto do entorno.</div>
       <div id="ctrlGlb" style="display:none">
+        <div class="note" id="glbMedida" style="margin-top:10px"></div>
+        <div class="row" style="margin-top:12px"><div class="name">Largura real do modelo</div><div class="val" id="vGlbL">12,0 m</div></div>
+        <input type="range" id="glbL" min="1" max="80" step="0.5" value="12">
+        <div class="note">Meça a fachada com a régua e ajuste até bater com a medida real.</div>
         <div class="row" style="margin-top:12px"><div class="name">Escala</div><div class="val" id="vGlbE">1,00×</div></div>
-        <input type="range" id="glbE" min="0.01" max="5" step="0.01" value="1">
+        <input type="range" id="glbE" min="0.01" max="20" step="0.01" value="1">
+        <div class="row" style="margin-top:10px"><div class="name">Leste (+) / Oeste (−)</div><div class="val" id="vGlbX">0,0 m</div></div>
+        <input type="range" id="glbX" min="-100" max="100" step="0.5" value="0">
+        <div class="row" style="margin-top:10px"><div class="name">Sul (+) / Norte (−)</div><div class="val" id="vGlbZ">0,0 m</div></div>
+        <input type="range" id="glbZ" min="-100" max="100" step="0.5" value="0">
         <div class="row" style="margin-top:10px"><div class="name">Rotação</div><div class="val" id="vGlbR">0°</div></div>
         <input type="range" id="glbR" min="0" max="359" step="1" value="0">
         <div class="row" style="margin-top:10px"><div class="name">Altura</div><div class="val" id="vGlbY">0,0 m</div></div>
         <input type="range" id="glbY" min="-10" max="30" step="0.1" value="0">
+        <div class="acts">
+          <button class="btn" id="glbArrastar">Arrastar na cena</button>
+          <button class="btn" id="glbAterrar">Apoiar no chão</button>
+        </div>
         <div class="acts"><button class="btn" id="glbRemover">Remover modelo</button></div>
       </div>
     </div>
