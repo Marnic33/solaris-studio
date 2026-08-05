@@ -2039,7 +2039,11 @@ gid('pjSalvar').onclick = async ()=>{
     const r = await PJ.sincronizar(p);
     gid('pjMsg').innerHTML += r.ok
       ? ' <b>Enviado para a nuvem</b> — dá para abrir em outro aparelho.'
-      : ` <span style="opacity:.7">Salvo só neste aparelho (${r.motivo}).</span>`;
+      : ` <span style="opacity:.7">Salvo só neste aparelho.</span>`+
+        `<br><span class="al">Nuvem: ${r.motivo}</span>`+
+        (r.dica ? `<br>${r.dica}` : '')+
+        `<br><span style="opacity:.6">Diagnóstico: abra `+
+        `<b>/api/projetos?diagnostico=1</b> no navegador.</span>`;
   }catch(err){
     gid('pjMsg').innerHTML = `<span class="al">Não consegui salvar:</span> ${err.message}`;
   }
