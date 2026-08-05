@@ -216,3 +216,72 @@ export function removerEquipamento(id, categoria) {
 /** Listas completas: catálogo do repositório + importados do usuário. */
 export const todosModulos   = () => [...MODULOS, ...ler().modulos];
 export const todosInversores = () => [...INVERSORES, ...ler().inversores];
+
+/* ==========================================================================
+   TUSD Fio B por distribuidora — referência para estimativa
+   ==========================================================================
+   Valores aproximados em R$/kWh, sem tributos, para o grupo B (baixa tensão).
+   A parcela Fio B é reajustada anualmente no processo tarifário de cada
+   concessionária e varia com a bandeira e a alíquota de ICMS do estado.
+
+   USE COMO PONTO DE PARTIDA, NUNCA COMO VALOR FINAL. O número correto está
+   na conta do cliente, discriminado como "TUSD Fio B" ou na composição
+   tarifária publicada pela distribuidora e pela ANEEL.
+   ========================================================================== */
+export const FIO_B_REFERENCIA = {
+  'CPFL Paulista':      0.28,
+  'CPFL Piratininga':   0.27,
+  'Enel SP':            0.26,
+  'Enel Rio':           0.31,
+  'Enel Ceará':         0.29,
+  'Light':              0.32,
+  'Cemig':              0.30,
+  'Copel':              0.24,
+  'RGE':                0.27,
+  'CEEE Equatorial':    0.29,
+  'Celesc':             0.25,
+  'Coelba (Neoenergia)':0.30,
+  'Celpe (Neoenergia)': 0.30,
+  'Cosern (Neoenergia)':0.29,
+  'Elektro':            0.28,
+  'EDP SP':             0.26,
+  'EDP ES':             0.27,
+  'Equatorial PA':      0.33,
+  'Equatorial MA':      0.31,
+  'Amazonas Energia':   0.34,
+  'Energisa MT':        0.30,
+  'Energisa MS':        0.29,
+  'Neoenergia Brasília':0.25,
+  'Sulgipe':            0.30
+};
+
+/** Busca o Fio B de referência aceitando o nome como vier da conta. */
+export function fioBDe(distribuidora) {
+  if (!distribuidora) return null;
+  const limpa = t => String(t).toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\b(s\.?a\.?|ltda|distribuicao|energia|eletrica|d)\b/g, ' ')
+    .replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim();
+
+  const alvo = limpa(distribuidora);
+  const entradas = Object.entries(FIO_B_REFERENCIA)
+    .map(([nome, valor]) => ({ nome, valor, chave: limpa(nome) }));
+
+  /* 1ª passada: o nome inteiro da tabela aparece no texto da conta.
+     Ordena do mais longo para o mais curto para que "cpfl piratininga"
+     ganhe de "cpfl paulista" quando os dois começam igual. */
+  const porTamanho = [...entradas].sort((a, b) => b.chave.length - a.chave.length);
+  for (const e of porTamanho) {
+    if (alvo.includes(e.chave) || e.chave.includes(alvo)) return e;
+  }
+
+  /* 2ª passada: casa por todas as palavras significativas em comum */
+  let melhor = null, maisPalavras = 0;
+  const palavrasAlvo = alvo.split(' ').filter(p => p.length > 2);
+  for (const e of entradas) {
+    const comuns = e.chave.split(' ')
+      .filter(p => p.length > 2 && palavrasAlvo.includes(p)).length;
+    if (comuns > maisPalavras) { maisPalavras = comuns; melhor = e; }
+  }
+  return maisPalavras > 0 ? melhor : null;
+}
