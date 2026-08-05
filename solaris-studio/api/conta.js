@@ -23,13 +23,21 @@ Extraia os dados abaixo e responda SOMENTE com JSON válido, sem markdown e sem 
  "unidade_consumidora": "número da UC ou null",
  "tipo_ligacao": "monofasica | bifasica | trifasica ou null",
  "grupo": "A ou B ou null",
+ "subgrupo": "B1 | B2 | B3 | A4 etc, ou null",
  "classe": "residencial | comercial | rural | industrial ou null",
  "tensao_v": número ou null,
+ "disjuntor_a": corrente do disjuntor de entrada em amperes, número ou null,
  "consumo_mes_kwh": número do mês faturado,
  "historico_kwh": [{"mes":"MM/AAAA","kwh":número}],
  "media_kwh": média do histórico, número,
  "valor_total_rs": número ou null,
- "tarifa_kwh_rs": valor por kWh se estiver visível, número ou null,
+ "tarifa_kwh_rs": valor total por kWh com tributos, número ou null,
+ "tarifa_te_rs": parcela TE por kWh, número ou null,
+ "tarifa_tusd_rs": parcela TUSD por kWh, número ou null,
+ "tusd_fio_b_rs": parcela TUSD Fio B por kWh se discriminada, número ou null,
+ "cosip_rs": valor da contribuição de iluminação pública no mês, número ou null,
+ "bandeira": "verde | amarela | vermelha 1 | vermelha 2 ou null",
+ "icms_pct": alíquota de ICMS em porcentagem, número ou null,
  "demanda_contratada_kw": número ou null,
  "ja_tem_geracao": true ou false,
  "creditos_kwh": número ou null,
@@ -40,10 +48,13 @@ Extraia os dados abaixo e responda SOMENTE com JSON válido, sem markdown e sem 
 Regras:
 - Use ponto como separador decimal e não use separador de milhar.
 - O histórico costuma vir num gráfico de barras com 12 meses; transcreva todos que conseguir ler.
-- Se a conta já indicar geração própria (energia injetada, saldo de créditos),
+- COSIP aparece como "Contrib. Ilum. Pública", "CIP" ou "COSIP" — é valor em reais, não por kWh.
+- A tarifa costuma vir separada em TE (energia) e TUSD (distribuição). Extraia as duas
+  quando aparecerem, e também o total com tributos.
+- O disjuntor de entrada às vezes aparece como "disj." ou junto do tipo de ligação.
+- Se a conta indicar geração própria (energia injetada, saldo de créditos),
   marque ja_tem_geracao como true.
-- Não invente. Campo que você não conseguir ler com segurança vai como null
-  e a confiança cai.`;
+- Não invente. Campo ilegível vai como null e a confiança cai.`;
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ erro: 'use POST' });
