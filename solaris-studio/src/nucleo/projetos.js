@@ -93,7 +93,7 @@ export async function sincronizar(projeto) {
     });
     if (!r.ok) {
       const e = await r.json().catch(() => ({}));
-      return { ok: false, motivo: e.erro || `HTTP ${r.status}` };
+      return { ok: false, motivo: e.detalhe || e.erro || `HTTP ${r.status}`, dica: e.dica };
     }
     return { ok: true };
   } catch (e) {
