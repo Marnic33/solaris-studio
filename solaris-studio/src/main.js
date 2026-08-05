@@ -28,7 +28,7 @@ const P = {
   modWp:620, modL:2465, modW:1134, modK:34.6,
   casaX:0, casaZ:0,
   maxFace:{},
-  inversor:'auto', moduloId:'jinko-620n', tMin:5, tMaxAmb:32,
+  inversor:'auto', invQtd:1, invQtdAuto:true, moduloId:'jinko-620n', tMin:5, tMaxAmb:32,
   perdas:{sujeira:3, mismatch:2, cabeamento:1.5, reflexao:2.5, degradacao:0.5, indisponibilidade:0.5},
   beiral:0.5, beiralH:0.2, terreno:'grama', murH:0.4, murW:0.15,
   fix:'auto',
@@ -1223,10 +1223,11 @@ const SL=[['comp','comp'],['larg','larg'],['pd','pd'],['incl','incl'],['azi','az
           ['lat','lat'],['lon','lon'],['dia','dia'],['hsp','hsp'],
           ['mwp','modWp'],['ml','modL'],['mw','modW'],['mk','modK'],
           ['bei','beiral'],['beh','beiralH'],['casax','casaX'],['casaz','casaZ'],
-          ['tmin','tMin'],['tmax','tMaxAmb'],['murh','murH'],['murw','murW']];
+          ['tmin','tMin'],['tmax','tMaxAmb'],['invQtd','invQtd'],['murh','murH'],['murw','murW']];
 SL.forEach(([id,key])=>{
   document.getElementById(id).addEventListener('input', e=>{
     P[key]=+e.target.value;
+    if(key==='invQtd') P.invQtdAuto=false;
     if(key==='lat'||key==='lon'){
       for(const j in cacheHSP) delete cacheHSP[j];
       for(const j in cacheDia) delete cacheDia[j];
@@ -1424,8 +1425,12 @@ function calcularEletrico(){
     ? (lista[0] || CAT.INVERSORES[CAT.INVERSORES.length-1])
     : (CAT.acharInversor(P.inversor) || lista[0] || CAT.INVERSORES[0]);
   const tCelMax = E.tempCelula(P.tMaxAmb, 1000, modulo.noct);
-  const arranjo = E.montarArranjo(n, modulo, inv, P.tMin, tCelMax);
-  ELE = {valido:true, modulo, inversor:inv, arranjo, potCC, tCelMax};
+  const qtd = P.invQtdAuto
+    ? E.unidadesNecessarias(n, modulo, inv, P.tMin, tCelMax)
+    : Math.max(1, P.invQtd);
+  if(P.invQtdAuto) P.invQtd = qtd;
+  const arranjo = E.montarArranjo(n, modulo, inv, P.tMin, tCelMax, qtd);
+  ELE = {valido:true, modulo, inversor:inv, arranjo, potCC, tCelMax, qtd};
   return ELE;
 }
 
@@ -1559,6 +1564,9 @@ function atualizarResumo(){
     [`Módulo <span class="k">${P.modWp} Wp</span>`, `${P.modL}×${P.modW} mm`, CONT.mod],
     ['Perfil / trilho', br(CONT.trilho,1)+' m','—']
   ];
+  if(ELE.valido && ELE.arranjo.viavel)
+    itens.push([`Inversor <span class="k">${ELE.inversor.nome}</span>`,
+                br(ELE.inversor.ca/1000,2)+' kW', ELE.qtd||1]);
   if(ehTri){
     itens.push(['Triângulo montado','conjunto A+B',CONT.triangulos]);
     itens.push(['Sapata de concreto','250×250×200 mm',CONT.fix]);
@@ -2516,18 +2524,41 @@ function atualizarEletrico(){
     `${i.mppt} MPPT (${i.mppt*i.stringsPorMppt} entradas) · eficiência ${br(i.eficiencia*100,1)}%<br>`+
     `MPPT de ${i.vMin} a ${i.vMax} V · máximo ${i.iMaxMppt} A por entrada.`;
 
+  gid('vInvQtd').textContent = P.invQtd + (P.invQtdAuto?' (auto)':'');
+  gid('invQtd').value = P.invQtd;
+  chips(gid('invQtdAuto'), [['auto','Calcular sozinho'],['manual','Definir eu mesmo']],
+    k=>(k==='auto')===P.invQtdAuto,
+    k=>{ P.invQtdAuto = (k==='auto'); atualizarResumo(); });
+  gid('notaQtd').innerHTML = ELE.qtd>1
+    ? `<b>${ELE.qtd} unidades</b> de ${i.nome} · potência CA total `+
+      `<b>${br(i.ca*ELE.qtd/1000,2)} kW</b>.`
+    : (i.micro
+       ? 'Microinversores trabalham em conjunto: aumente as unidades conforme os módulos.'
+       : 'Uma unidade atende todo o arranjo.');
+
   if(!a.viavel){
-    cxs.innerHTML=`<div class="cartao alto"><h4>Arranjo inviável</h4><p>${a.motivo}</p></div>`;
+    cxs.innerHTML=`<div class="cartao alto"><h4>Arranjo inviável</h4><p>${a.motivo}</p></div>`+
+      (a.sugestaoUnidades
+        ? `<div class="acts"><button class="btn pri" id="corrigirQtd">`+
+          `Usar ${a.sugestaoUnidades} unidades</button></div>` : '');
+    const bt=document.getElementById('corrigirQtd');
+    if(bt) bt.onclick=()=>{ P.invQtdAuto=false; P.invQtd=a.sugestaoUnidades;
+      gid('invQtd').value=P.invQtd; atualizarResumo(); };
     return;
   }
   const cor = (a.fdi>1.35||a.fdi<0.85) ? 'medio' : '';
+  const titulo = a.micro
+    ? `${a.unidades} microinversor${a.unidades>1?'es':''} · ${a.distribuicao.join(' + ')} módulos`
+    : `${a.strings} string${a.strings>1?'s':''} de ${a.comprimentos.join(' + ')} módulos`+
+      (a.unidades>1?` em ${a.unidades} unidades`:'');
   let h=`<div class="cartao ${cor}"><span class="tag">FDI ${br(a.fdi*100,0)}%</span>`+
-    `<h4>${a.strings} string${a.strings>1?'s':''} de ${a.comprimentos.join(' + ')} módulos</h4>`+
-    `<p>${br(a.potCC/1000,2)} kWp em CC para ${br(i.ca/1000,2)} kW em CA · `+
+    `<h4>${titulo}</h4>`+
+    `<p>${br(a.potenciaCC/1000,2)} kWp em CC para `+
+    `${br((a.potenciaCA||i.ca)/1000,2)} kW em CA · `+
     `${a.entradasUsadas} de ${a.entradasTotais} entradas · corrente ${a.correnteTotal} A.</p></div>`;
   const v=a.validacao;
   h+=`<table><thead><tr><th>Verificação</th><th>Valor</th><th>Limite</th></tr></thead><tbody>`+
-     `<tr><td>Voc a ${P.tMin} °C</td><td>${br(v.vocFrio,0)} V</td>`+
+     `<tr><td>Voc ${a.micro?'do módulo':''} a ${P.tMin} °C</td><td>${br(v.vocFrio,0)} V</td>`+
      `<td>${i.vMax} V (${br(v.vocFrio/i.vMax*100,0)}%)</td></tr>`+
      `<tr><td>Vmp a ${br(ELE.tCelMax,0)} °C</td><td>${br(v.vmpQuente,0)} V</td>`+
      `<td>mín ${i.vMin} V</td></tr>`+
@@ -2582,6 +2613,8 @@ function coletarProjeto(){
       x_m:o.x, z_m:o.z, largura_m:o.l, profundidade_m:o.p, altura_m:o.h})),
     eletrico: ELE.valido ? {
       inversor: ELE.inversor.nome, potencia_ca_w: ELE.inversor.ca,
+      unidades: ELE.qtd || 1,
+      microinversor: !!ELE.inversor.micro,
       fases: ELE.inversor.fases, mppt: ELE.inversor.mppt,
       arranjo_viavel: ELE.arranjo.viavel,
       strings: ELE.arranjo.viavel ? ELE.arranjo.comprimentos : null,
