@@ -74,7 +74,6 @@
     <button data-p="conta">Conta</button>
     <button data-p="eletrico">Elétrico</button>
     <button data-p="resumo">Resumo</button>
-    <button data-p="economia">Economia</button>
     <button data-p="ia">IA</button>
   </div>
   <div id="body">
@@ -359,6 +358,21 @@
       </div>
       <input type="file" id="arqConta" style="display:none">
       <div id="saidaConta" style="margin-top:14px"></div>
+
+      <div class="lbl">Dados tarifários</div>
+      <div class="note" style="margin-top:0">Preenchidos pela leitura da conta. Ajuste se
+        precisar — vão para o briefing como referência para o orçamento.</div>
+      <div class="row" style="margin-top:10px"><div class="name">Consumo médio</div><div class="val" id="vConsumo">0 kWh</div></div>
+      <input type="range" id="consumo" min="0" max="5000" step="10" value="0">
+      <div class="row" style="margin-top:10px"><div class="name">Tarifa total</div><div class="val" id="vTarifa">0,98</div></div>
+      <input type="range" id="tarifa" min="0.4" max="2" step="0.001" value="0.98">
+      <div class="row" style="margin-top:10px"><div class="name">TUSD Fio B</div><div class="val" id="vFioB">0,27</div></div>
+      <input type="range" id="fiob" min="0.05" max="0.6" step="0.001" value="0.27">
+      <div class="row" style="margin-top:10px"><div class="name">COSIP</div><div class="val" id="vCosip">0,00</div></div>
+      <input type="range" id="cosip" min="0" max="120" step="0.5" value="0">
+      <div class="lbl">Ligação</div>
+      <div class="chips" id="ligacao"></div>
+      <div class="note" id="notaTarifa"></div>
     </div>
 
     <!-- ============ ELÉTRICO ============ -->
@@ -399,40 +413,6 @@
       <div class="row" style="margin-top:8px"><div class="name">Degradação + indisponib.</div><div class="val" id="vPdeg">1,0 %</div></div>
       <input type="range" id="pdeg" min="0" max="5" step="0.5" value="1">
       <div class="note" id="notaPR"></div>
-    </div>
-
-    <!-- ============ ECONOMIA ============ -->
-    <div class="pane" id="p-economia">
-      <div class="lbl">Investimento</div>
-      <div class="row"><div class="name">Valor da proposta</div><div class="val" id="vInvest">—</div></div>
-      <input type="range" id="invest" min="3000" max="500000" step="500" value="30000">
-      <div class="note" id="notaInvest"></div>
-
-      <div class="lbl">Tarifa</div>
-      <div class="chips" id="distrib"></div>
-      <div class="row" style="margin-top:8px"><div class="name">Tarifa cheia</div><div class="val" id="vTarifa">0,95</div></div>
-      <input type="range" id="tarifa" min="0.4" max="1.8" step="0.01" value="0.95">
-      <div class="row" style="margin-top:10px"><div class="name">TUSD Fio B</div><div class="val" id="vFioB">0,27</div></div>
-      <input type="range" id="fiob" min="0.05" max="0.6" step="0.01" value="0.27">
-
-      <div class="lbl">Consumo e ligação</div>
-      <div class="row"><div class="name">Consumo médio</div><div class="val" id="vConsumo">500 kWh</div></div>
-      <input type="range" id="consumo" min="50" max="5000" step="10" value="500">
-      <div class="chips" id="ligacao" style="margin-top:8px"></div>
-
-      <div class="lbl">Premissas</div>
-      <div class="row"><div class="name">Ano de conexão</div><div class="val" id="vAnoCon">2026</div></div>
-      <input type="range" id="anocon" min="2022" max="2035" step="1" value="2026">
-      <div class="row" style="margin-top:10px"><div class="name">Reajuste anual da energia</div><div class="val" id="vInfl">6,0 %</div></div>
-      <input type="range" id="infl" min="0" max="15" step="0.5" value="6">
-      <div class="row" style="margin-top:10px"><div class="name">Manutenção anual</div><div class="val" id="vOem">R$ 0</div></div>
-      <input type="range" id="oem" min="0" max="5000" step="50" value="0">
-
-      <div class="lbl">Resultado</div>
-      <div id="econResumo"></div>
-      <div class="lbl">Fluxo de caixa</div>
-      <div id="econFluxo"></div>
-      <div class="note" id="econNota"></div>
     </div>
 
     <!-- ============ IA ============ -->
