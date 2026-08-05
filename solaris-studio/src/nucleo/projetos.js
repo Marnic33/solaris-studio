@@ -101,6 +101,18 @@ export async function sincronizar(projeto) {
   }
 }
 
+/** Baixa um projeto completo da nuvem, com o estado. */
+export async function baixarNuvem(id) {
+  const r = await fetch(`/api/projetos?id=${encodeURIComponent(id)}`);
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({}));
+    throw new Error(e.erro || `HTTP ${r.status}`);
+  }
+  const p = await r.json();
+  if (!p || !p.estado) throw new Error('projeto sem estado salvo');
+  return p;
+}
+
 /** Busca a lista de projetos da nuvem. */
 export async function listarNuvem() {
   const r = await fetch('/api/projetos');
