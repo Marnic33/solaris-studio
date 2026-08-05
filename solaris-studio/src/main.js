@@ -2359,8 +2359,11 @@ liga('arqConta','onchange', async e=>{
     CONTA=d;
     mostrarConta(d);
   }catch(err){
-    out.innerHTML=`<div class="cartao alto"><h4>Não consegui ler</h4><p>${err.message}. `+
-      `Verifique se a ANTHROPIC_API_KEY está configurada na Vercel e se a foto está legível.</p></div>`;
+    out.innerHTML=`<div class="cartao alto"><h4>Não consegui ler</h4>`+
+      `<p>${err.message}</p>`+
+      `<p style="margin-top:6px;opacity:.75">Se o problema persistir: contas em PDF `+
+      `funcionam melhor que fotos. Se a conta tiver mais de uma página, envie só a `+
+      `primeira, que é onde ficam o consumo e a tarifa.</p></div>`;
   }
   b.disabled=false; b.textContent='Enviar outra conta';
   e.target.value='';
