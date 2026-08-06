@@ -21,211 +21,190 @@ const brl = v => 'R$ ' + Math.round(v || 0).toLocaleString('pt-BR');
 const num = (v, d = 0) => Number(v || 0).toLocaleString('pt-BR',
   { minimumFractionDigits: d, maximumFractionDigits: d });
 
+/**
+ * Anexo técnico da proposta — 2 páginas, linguagem de cliente.
+ *
+ * Não é o memorial de cálculo: é a peça que acompanha a proposta comercial e
+ * mostra, de forma compreensível, que houve estudo de verdade. Números
+ * elétricos detalhados ficam no briefing técnico, não aqui.
+ */
 export async function gerarRelatorio(dados) {
-  /* carregado sob demanda: o jsPDF traz html2canvas junto e pesa demais
-     para entrar no pacote inicial, sobretudo em celular */
   const { jsPDF } = await import('jspdf');
-  const { projeto, sistema, geracao, economia, materiais, imagem, local, ressalvas } = dados;
+  const { projeto, sistema, geracao, materiais, imagem, local, analise } = dados;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  const L = 210, A = 297, M = 16;   // largura, altura, margem
+  const L = 210, A = 297, M = 16;
   let y = 0;
 
-  /* ---------------------------------------------------------------- capa */
+  /* ============================ PÁGINA 1 ============================ */
   doc.setFillColor(...COR.tinta);
-  doc.rect(0, 0, L, 52, 'F');
-
+  doc.rect(0, 0, L, 46, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(22);
-  doc.text('SOLARIS STUDIO', M, 24);
+  doc.setFontSize(19);
+  doc.text('ESTUDO TÉCNICO', M, 22);
   doc.setFillColor(...COR.ambar);
-  doc.rect(M, 28, 26, 1.4, 'F');
+  doc.rect(M, 26, 24, 1.3, 'F');
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setTextColor(190, 200, 212);
-  doc.text('TRINITY SOLARIS BRASIL  ·  PROPOSTA TÉCNICA', M, 38);
-  doc.setFontSize(8);
-  doc.text('trinitysolarisbrasil.com.br  ·  contato@trinitysolarisbrasil.com.br', M, 45);
+  doc.text('TRINITY SOLARIS BRASIL  ·  SIMULAÇÃO FOTOVOLTAICA', M, 34);
+  doc.setFontSize(7.5);
+  doc.text('Anexo à proposta comercial', M, 40);
 
-  y = 66;
+  y = 58;
   doc.setTextColor(...COR.tinta);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(17);
+  doc.setFontSize(15);
   doc.text(projeto.nome || 'Projeto fotovoltaico', M, y);
-  y += 8;
+  y += 7;
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
+  doc.setFontSize(9.5);
   doc.setTextColor(...COR.suave);
-  const linhaCliente = [
-    projeto.cliente ? `Cliente: ${projeto.cliente}` : null,
-    projeto.data ? `Data: ${projeto.data}` : null
-  ].filter(Boolean).join('     ');
-  if (linhaCliente) { doc.text(linhaCliente, M, y); y += 6; }
+  const cab = [projeto.cliente, projeto.data].filter(Boolean).join('     ');
+  if (cab) { doc.text(cab, M, y); y += 5; }
   if (local && local.endereco) {
     doc.text(doc.splitTextToSize(local.endereco, L - 2 * M), M, y);
     y += 6;
   }
 
-  /* imagem da simulação */
-  y += 4;
+  /* imagem da simulação — o argumento visual mais forte */
+  y += 3;
   if (imagem) {
-    const larg = L - 2 * M;
-    const alt = Math.min(88, larg * 0.52);
+    const larg = L - 2 * M, alt = Math.min(84, larg * 0.5);
     try {
       doc.addImage(imagem, 'JPEG', M, y, larg, alt, undefined, 'FAST');
       doc.setDrawColor(...COR.linha);
       doc.rect(M, y, larg, alt);
-      y += alt + 8;
+      y += alt + 3;
+      doc.setFontSize(7.5);
+      doc.setTextColor(...COR.suave);
+      doc.text('Simulação tridimensional do telhado, com a posição real dos módulos.',
+               M, y + 3);
+      y += 10;
     } catch (_) { y += 2; }
   }
 
-  /* números de destaque */
-  const destaques = [
-    ['POTÊNCIA', `${num(sistema.kwp, 2)} kWp`],
-    ['GERAÇÃO', `${num(geracao.media)} kWh/mês`],
-    ['ECONOMIA', economia ? `${brl(economia.economiaMes1)}/mês` : '—']
+  /* três números que o cliente entende */
+  const dest = [
+    ['POTÊNCIA', `${num(sistema.kwp, 2)} kWp`, `${sistema.modulos} módulos`],
+    ['GERAÇÃO', `${num(geracao.media)} kWh`, 'média por mês'],
+    ['COBERTURA', geracao.cobertura ? `${num(geracao.cobertura)}%` : '—', 'do seu consumo']
   ];
-  const larguraCaixa = (L - 2 * M - 8) / 3;
-  destaques.forEach(([rot, val], i) => {
-    const x = M + i * (larguraCaixa + 4);
+  const lc = (L - 2 * M - 8) / 3;
+  dest.forEach(([rot, val, sub], i) => {
+    const x = M + i * (lc + 4);
     doc.setFillColor(...COR.fundo);
-    doc.rect(x, y, larguraCaixa, 20, 'F');
+    doc.rect(x, y, lc, 24, 'F');
+    doc.setFillColor(...COR.ambar);
+    doc.rect(x, y, 1.2, 24, 'F');
+    doc.setFontSize(6.5);
+    doc.setTextColor(...COR.suave);
+    doc.text(rot, x + 4, y + 6);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.setTextColor(...COR.tinta);
+    doc.text(val, x + 4, y + 14);
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(...COR.suave);
-    doc.text(rot, x + 4, y + 7);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(13);
-    doc.setTextColor(...COR.ambar);
-    doc.text(val, x + 4, y + 15);
-    doc.setFont('helvetica', 'normal');
+    doc.text(sub, x + 4, y + 20);
   });
-  y += 30;
+  y += 32;
+
+  titulo(doc, 'GERAÇÃO AO LONGO DO ANO', M, y); y += 8;
+  y = grafico(doc, geracao.meses, M, y, L - 2 * M, 40);
+  y += 5;
+  doc.setFontSize(8);
+  doc.setTextColor(...COR.suave);
+  doc.text(doc.splitTextToSize(
+    `Total estimado de ${num(geracao.total)} kWh por ano. A variação entre os meses é ` +
+    `natural: no inverno o sol fica mais baixo e os dias são mais curtos.`,
+    L - 2 * M), M, y);
 
   rodape(doc, 1);
 
-  /* ------------------------------------------------------- página técnica */
+  /* ============================ PÁGINA 2 ============================ */
   doc.addPage();
   y = M + 6;
-  titulo(doc, 'DIMENSIONAMENTO', M, y); y += 10;
+  titulo(doc, 'O QUE FOI ANALISADO', M, y); y += 10;
 
-  const tecnicas = [
-    ['Módulos', `${sistema.modulos} × ${sistema.moduloNome}`],
-    ['Potência instalada', `${num(sistema.kwp, 2)} kWp`],
-    ['Área ocupada', `${num(sistema.area, 1)} m²`],
-    ['Peso total', `${num(sistema.peso)} kg`],
-    ['Inversor', sistema.inversor || '—'],
-    ['Configuração', sistema.strings || '—'],
-    ['Fator de dimensionamento', sistema.fdi ? `${num(sistema.fdi)}%` : '—'],
-    ['Estrutura', sistema.fixacao || '—'],
-    ['Inclinação', `${num(sistema.inclinacao)}°`],
-    ['Orientação', sistema.orientacao || '—']
+  const itens = [
+    ['Telhado medido em três dimensões',
+     `${sistema.superficie}, inclinação de ${num(sistema.inclinacao)}° voltada para ` +
+     `${sistema.orientacao}.`],
+    ['Posição do sol hora a hora',
+     `Cálculo astronômico para as coordenadas exatas do imóvel, ao longo dos doze meses.`],
+    ['Irradiação solar do local',
+     geracao.fonte ? `Dados de ${geracao.fonte}.` :
+       'Irradiação de referência para a região.'],
+    ['Sombreamento simulado',
+     geracao.perdaSombra != null
+       ? `Sombra de obstáculos e das próprias fileiras verificada ao longo do ano. ` +
+         `Perda considerada: ${num(geracao.perdaSombra, 1)}%.`
+       : 'Não foi identificado obstáculo relevante no levantamento.'],
+    ['Perdas reais do sistema',
+     `Temperatura dos módulos, sujeira, cabeamento e rendimento do inversor. ` +
+     `Aproveitamento final de ${num(geracao.pr, 1)}%.`],
+    ['Equipamentos verificados',
+     `${sistema.inversor}. Tensões e correntes conferidas contra os limites do fabricante.`],
+    ['Estrutura dimensionada',
+     `${sistema.fixacao} Quantidades contadas peça a peça sobre a geometria do telhado.`]
   ];
-  y = tabela(doc, tecnicas, M, y, L - 2 * M);
-
-  y += 8;
-  titulo(doc, 'GERAÇÃO ESTIMADA', M, y); y += 8;
-  y = grafico(doc, geracao.meses, M, y, L - 2 * M, 46);
-  y += 6;
-  doc.setFontSize(8.5);
-  doc.setTextColor(...COR.suave);
-  const notaGeracao =
-    `Total anual de ${num(geracao.total)} kWh, média de ${num(geracao.media)} kWh por mês. ` +
-    (geracao.fonte ? `Irradiação: ${geracao.fonte}. ` : '') +
-    (geracao.perdaSombra ? `Sombreamento descontado: ${num(geracao.perdaSombra, 1)}%. ` : '') +
-    (geracao.pr ? `Desempenho do sistema: ${num(geracao.pr, 1)}%.` : '');
-  doc.text(doc.splitTextToSize(notaGeracao, L - 2 * M), M, y);
-  y += 14;
-
-  if (materiais && materiais.length) {
-    titulo(doc, 'MATERIAIS', M, y); y += 8;
-    y = tabela(doc, materiais.map(m => [m[0], `${m[2]}   ${m[1] !== '—' ? m[1] : ''}`.trim()]),
-               M, y, L - 2 * M);
-  }
-  rodape(doc, 2);
-
-  /* ------------------------------------------------------ página econômica */
-  if (economia) {
-    doc.addPage();
-    y = M + 6;
-    titulo(doc, 'ANÁLISE ECONÔMICA', M, y); y += 10;
-
-    const eco = [
-      ['Investimento', brl(economia.investimento)],
-      ['Economia no primeiro ano', brl(economia.economiaAno1)],
-      ['Retorno do investimento', economia.paybackSimples ? `${num(economia.paybackSimples, 1)} anos` : '—'],
-      ['Retorno descontado', economia.paybackDescontado ? `${num(economia.paybackDescontado, 1)} anos` : '—'],
-      ['Taxa interna de retorno', economia.tir !== null ? `${num(economia.tir, 1)}% ao ano` : '—'],
-      ['Valor presente líquido (25 anos)', brl(economia.vpl)],
-      ['Economia acumulada (25 anos)', brl(economia.economia25)],
-      ['Custo da energia gerada', economia.lcoe ? `R$ ${num(economia.lcoe, 3)}/kWh` : '—']
-    ];
-    y = tabela(doc, eco, M, y, L - 2 * M);
-
-    y += 8;
-    titulo(doc, 'RETORNO ACUMULADO', M, y); y += 8;
-    y = graficoFluxo(doc, economia.linhas, M, y, L - 2 * M, 44);
-
-    y += 8;
+  itens.forEach(([t, d]) => {
+    doc.setFillColor(...COR.ciano);
+    doc.circle(M + 1.6, y - 1.2, 1.6, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.setTextColor(...COR.tinta);
+    doc.text(t, M + 7, y);
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.5);
     doc.setTextColor(...COR.suave);
-    const notaFioB =
-      `A Lei 14.300/2022 institui cobrança escalonada do TUSD Fio B sobre a energia ` +
-      `compensada. Para conexão em ${economia.anoConexao}, a cobrança é de ` +
-      `${num(economia.pctFioBInicial * 100)}% no primeiro ano, chegando a 100% em 2029. ` +
-      `Ao longo de 25 anos essa parcela representa ${brl(economia.fioB25)}, já descontada ` +
-      `dos números acima. Tarifa considerada: R$ ${num(economia.tarifa, 2)}/kWh com ` +
-      `reajuste anual de ${num(economia.inflacao * 100, 1)}%.`;
-    doc.text(doc.splitTextToSize(notaFioB, L - 2 * M), M, y);
-    rodape(doc, 3);
-  }
-
-  /* --------------------------------------------------------- ressalvas */
-  doc.addPage();
-  y = M + 6;
-  titulo(doc, 'CONSIDERAÇÕES TÉCNICAS', M, y); y += 10;
-
-  const padrao = [
-    'Os valores de geração são estimativa de anteprojeto, calculada a partir de ' +
-    'irradiação de referência e do modelo de sombreamento tridimensional. A produção ' +
-    'real varia com o clima do ano, a limpeza dos módulos e a disponibilidade da rede.',
-
-    'O sombreamento calculado é geométrico. O efeito elétrico de sombra parcial, ' +
-    'que depende dos diodos de bypass e do arranjo das strings, tende a ser maior ' +
-    'que o percentual aqui indicado.',
-
-    'As quantidades de material são estimativas para orçamento. Confirme contra o ' +
-    'manual do fabricante da estrutura antes da compra.',
-
-    'Este documento não substitui o projeto executivo. A fixação e o lastro precisam ' +
-    'de verificação de carga de vento pela NBR 6123, e a instalação elétrica deve ' +
-    'seguir a NBR 5410 e a NBR 16690, com ART recolhida por profissional habilitado.',
-
-    'A conexão à rede depende de parecer de acesso favorável da distribuidora, ' +
-    'conforme a REN ANEEL 1.000/2021. Prazos e eventuais obras de reforço são ' +
-    'definidos pela concessionária.',
-
-    'Valores de tarifa, tributos e Fio B mudam por distribuidora e são reajustados ' +
-    'anualmente. Confirme na conta de energia do cliente.'
-  ];
-  (ressalvas && ressalvas.length ? ressalvas : padrao).forEach(t => {
-    doc.setFillColor(...COR.ambar);
-    doc.rect(M, y - 3, 1.2, 4, 'F');
-    doc.setFontSize(9);
-    doc.setTextColor(...COR.tinta);
-    const linhas = doc.splitTextToSize(t, L - 2 * M - 6);
-    doc.text(linhas, M + 5, y);
-    y += linhas.length * 4.6 + 6;
+    const linhas = doc.splitTextToSize(d, L - 2 * M - 7);
+    doc.text(linhas, M + 7, y + 4.5);
+    y += 4.5 + linhas.length * 4 + 5;
   });
 
-  y = Math.max(y, A - 60);
+  if (analise && analise.length) {
+    y += 2;
+    titulo(doc, 'OBSERVAÇÕES DO PROJETO', M, y); y += 8;
+    analise.slice(0, 4).forEach(t => {
+      doc.setFillColor(...COR.ambar);
+      doc.rect(M, y - 3, 1.2, 4, 'F');
+      doc.setFontSize(8.5);
+      doc.setTextColor(...COR.tinta);
+      const linhas = doc.splitTextToSize(t, L - 2 * M - 6);
+      doc.text(linhas, M + 5, y);
+      y += linhas.length * 4.3 + 5;
+    });
+  }
+
+  /* ressalvas curtas, em linguagem de cliente */
+  y = Math.max(y + 4, A - 72);
+  doc.setFillColor(...COR.fundo);
+  doc.rect(M, y - 5, L - 2 * M, 40, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...COR.tinta);
+  doc.text('IMPORTANTE', M + 4, y + 1);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.8);
+  doc.setTextColor(...COR.suave);
+  doc.text(doc.splitTextToSize(
+    'Os valores de geração são estimativa de projeto. A produção real varia com o clima ' +
+    'de cada ano e com a limpeza dos módulos. A instalação segue as normas NBR 5410 e ' +
+    'NBR 16690, com responsabilidade técnica registrada, e a conexão à rede depende de ' +
+    'aprovação da distribuidora conforme a REN ANEEL 1.000/2021.',
+    L - 2 * M - 8), M + 4, y + 7);
+
+  y = A - 24;
   doc.setDrawColor(...COR.linha);
   doc.line(M, y, L - M, y);
-  y += 8;
-  doc.setFontSize(9);
+  doc.setFontSize(8);
   doc.setTextColor(...COR.suave);
-  doc.text('Trinity Solaris Brasil  ·  CNPJ 65.882.004/0001-96', M, y);
-  doc.text('contato@trinitysolarisbrasil.com.br', M, y + 5);
-  rodape(doc, 4);
+  doc.text('Trinity Solaris Brasil  ·  CNPJ 65.882.004/0001-96', M, y + 6);
+  doc.text('contato@trinitysolarisbrasil.com.br', M, y + 11);
+  rodape(doc, 2);
 
   return doc;
 }
