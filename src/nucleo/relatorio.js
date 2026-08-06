@@ -5,7 +5,6 @@
  * dimensionamento, a curva de geração, a análise econômica e a lista de
  * materiais. Pensado para ser entregue ao cliente e anexado à proposta.
  */
-import { jsPDF } from 'jspdf';
 
 /* paleta impressa — a da tela é escura demais para papel */
 const COR = {
@@ -22,7 +21,10 @@ const brl = v => 'R$ ' + Math.round(v || 0).toLocaleString('pt-BR');
 const num = (v, d = 0) => Number(v || 0).toLocaleString('pt-BR',
   { minimumFractionDigits: d, maximumFractionDigits: d });
 
-export function gerarRelatorio(dados) {
+export async function gerarRelatorio(dados) {
+  /* carregado sob demanda: o jsPDF traz html2canvas junto e pesa demais
+     para entrar no pacote inicial, sobretudo em celular */
+  const { jsPDF } = await import('jspdf');
   const { projeto, sistema, geracao, economia, materiais, imagem, local, ressalvas } = dados;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const L = 210, A = 297, M = 16;   // largura, altura, margem
