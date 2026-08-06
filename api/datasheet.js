@@ -163,6 +163,25 @@ export default async function handler(req, res) {
         avisos.push('Potência CC menor que a CA — incomum, confira no datasheet.');
       if (!eq.vMax || !eq.vMin || !eq.iMaxMppt)
         avisos.push('Faltam tensões ou corrente de entrada; sem isso a validação de string não roda.');
+
+      /* microinversor: o simulador precisa da marca para contar unidades em vez
+         de montar strings. Reconhece pelo tipo declarado ou pelas características. */
+      const pareceMicro = /micro/i.test(eq.tipo || '') ||
+                          /micro/i.test(eq.nome || '') ||
+                          (eq.ca && eq.ca <= 3000 && eq.vMax && eq.vMax <= 80);
+      if (pareceMicro) {
+        eq.micro = true;
+        eq.tipo = 'microinversor';
+        if (!eq.mppt || eq.mppt < 1) {
+          eq.mppt = 1;
+          avisos.push('Não identifiquei quantas entradas o microinversor tem — ' +
+                      'assumi 1. Confira no datasheet, isso muda a quantidade de unidades.');
+        }
+        avisos.push(`Tratado como microinversor com ${eq.mppt} entrada(s): o sistema ` +
+                    `calcula quantas unidades são necessárias, não strings em série.`);
+      } else {
+        eq.micro = false;
+      }
       eq.id = gerarId(eq.fabricante, eq.nome);
     } else if (eq.categoria === 'modulo') {
       if (eq.comprimento && eq.comprimento < 100) { eq.comprimento *= 1000; avisos.push('Comprimento convertido de metros para milímetros.'); }
