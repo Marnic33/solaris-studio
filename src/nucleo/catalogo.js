@@ -228,7 +228,27 @@ export const todosInversores = () => [...INVERSORES, ...ler().inversores];
    na conta do cliente, discriminado como "TUSD Fio B" ou na composição
    tarifária publicada pela distribuidora e pela ANEEL.
    ========================================================================== */
+/* Nomes que aparecem na conta e não batem com o nome comercial. */
+export const APELIDOS = {
+  'eletropaulo':            'Enel SP',
+  'ampla':                  'Enel Rio',
+  'coelce':                 'Enel Ceará',
+  'bandeirante':            'EDP SP',
+  'escelsa':                'EDP ES',
+  'aes sul':                'RGE',
+  'ceee':                   'CEEE Equatorial',
+  'celg':                   'Equatorial GO',
+  'cepisa':                 'Equatorial PI',
+  'cemar':                  'Equatorial MA',
+  'celpa':                  'Equatorial PA',
+  'ceb':                    'Neoenergia Brasília',
+  'elektro':                'Elektro',
+  'eletrobras amazonas':    'Amazonas Energia'
+};
+
 export const FIO_B_REFERENCIA = {
+  'Equatorial GO':      0.30,
+  'Equatorial PI':      0.31,
   'CPFL Paulista':      0.28,
   'CPFL Piratininga':   0.27,
   'Enel SP':            0.26,
@@ -263,6 +283,12 @@ export function fioBDe(distribuidora) {
     .replace(/\b(s\.?a\.?|ltda|distribuicao|energia|eletrica|d)\b/g, ' ')
     .replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim();
 
+  let bruto = String(distribuidora).toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  /* traduz nome de fachada para o nome comercial atual */
+  for (const [apelido, atual] of Object.entries(APELIDOS)) {
+    if (bruto.includes(apelido)) { distribuidora = atual; break; }
+  }
   const alvo = limpa(distribuidora);
   const entradas = Object.entries(FIO_B_REFERENCIA)
     .map(([nome, valor]) => ({ nome, valor, chave: limpa(nome) }));
