@@ -230,6 +230,7 @@
       <div class="acts">
         <button class="btn" id="btnDatasheetMod">Importar datasheet do módulo</button>
       </div>
+      <div id="saidaDatasheetMod"></div>
 
       <div class="lbl">Orientação padrão das novas fileiras</div>
       <div class="chips" id="ori"></div>
@@ -312,6 +313,13 @@
       <div class="lbl">Irradiação de referência</div>
       <div class="row"><div class="name">HSP do local (CRESESB)</div><div class="val" id="vHsp">4,60</div></div>
       <input type="range" id="hsp" min="3" max="6.5" step="0.05" value="4.6">
+      <div class="lbl">Horizonte distante</div>
+      <div class="note" style="margin-top:0">Morro, serra ou prédio ao longe cortam o sol
+        no início e no fim do dia. Informe a altura angular do relevo em cada direção.</div>
+      <div class="chips" id="horPresets"></div>
+      <div id="horEditor" style="margin-top:8px"></div>
+      <div class="note" id="notaHorizonte"></div>
+
       <div class="lbl">Exibir</div>
       <div class="chips" id="show"></div>
     </div>
