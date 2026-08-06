@@ -932,6 +932,14 @@ function calcularPerdasAnuais(){
 
   const dt = n<=30 ? 0.5 : 1;
   const ideal=new Array(n).fill(0), real=new Array(n).fill(0);
+  const eletrico=new Array(n).fill(0);
+  const fmE=FACES.map(()=>new Array(12).fill(0));
+  /* mapa string -> índices de módulo, para o efeito de série */
+  const daString={};
+  for(let i=0;i<n;i++){
+    const k=`${CONT.faceDe[i]}`;
+    (daString[k]=daString[k]||[]).push(i);
+  }
   const fm = FACES.map(()=>({i:new Array(12).fill(0), r:new Array(12).fill(0)}));
   const r=new THREE.Raycaster(); r.far=500;
   let horas=0;
@@ -947,12 +955,16 @@ function calcularPerdasAnuais(){
       const sv=vetorSol(s.alt,s.azi), sa=s.alt*RAD;
       const DNI=G0*Math.pow(0.7,Math.pow(AM_KY(sa),0.678));
       const difH=0.11*DNI*Math.sin(sa);
+      const substringsAgora=new Array(n).fill(3);
+      const diretaDe=new Array(n).fill(0);
+      const difusaDe=new Array(n).fill(0);
       for(let i=0;i<n;i++){
         const cosI=Math.max(0, CONT.normais[i].dot(sv));
         const ct=Math.max(0, CONT.normais[i].y);
         const difP=difH*(1+ct)/2;
         const direta=DNI*cosI;
         const fmi = fm[CONT.faceDe[i]];
+        diretaDe[i]=direta; difusaDe[i]=difP;
         ideal[i]+=(direta+difP)*dt;
         if(fmi){ fmi.i[m]+=(direta+difP)*dt; }
         if(direta<=0 || !visivel){ real[i]+=difP*dt; if(fmi) fmi.r[m]+=difP*dt; continue; }
@@ -966,23 +978,61 @@ function calcularPerdasAnuais(){
           r.set(org, sv);
           if(!r.intersectObjects(alvos,false).length) livres++;
         }
+        substringsAgora[i]=livres;
         const util=(direta*(livres/3)+difP)*dt;
         real[i]+=util;
         if(fmi) fmi.r[m]+=util;
+      }
+
+      /* ---- modelo elétrico: bypass e limitação por série ----
+         Cada módulo tem 3 substrings com diodo. A substring sombreada é
+         contornada e perde sua tensão. Na string em série, a corrente é
+         limitada pelo módulo menos iluminado entre os que seguem ativos —
+         por isso a perda elétrica é sempre maior que a geométrica. */
+      for(const k in daString){
+        const grupo=daString[k];
+        let piorFracao=1;
+        for(const i of grupo){
+          if(diretaDe[i]<=0) continue;
+          piorFracao=Math.min(piorFracao, substringsAgora[i]/3);
+        }
+        for(const i of grupo){
+          const dir=diretaDe[i], dif=difusaDe[i];
+          if(dir<=0){ eletrico[i]+=dif*dt; continue; }
+          const propria=substringsAgora[i]/3;
+          /* tensão perdida pelo próprio bypass × corrente limitada pela série.
+             Mistura 70/30 entre limitação total e comportamento independente,
+             refletindo que MPPT recupera parte do desequilíbrio. */
+          const fator=propria*(0.70*piorFracao + 0.30);
+          const util=(dir*fator+dif)*dt;
+          eletrico[i]+=util;
+          const f=fmE[CONT.faceDe[i]];
+          if(f) f[m]+=util;
+        }
       }
     }
   }
   const porFace=FACES.map(()=>({i:0,r:0}));
   const porModulo=[];
-  let ti=0, tr=0;
+  let ti=0, tr=0, te=0;
   for(let i=0;i<n;i++){
-    ti+=ideal[i]; tr+=real[i];
+    ti+=ideal[i]; tr+=real[i]; te+=eletrico[i];
     porModulo.push(ideal[i]>0 ? 1-real[i]/ideal[i] : 0);
     const f=porFace[CONT.faceDe[i]];
     if(f){ f.i+=ideal[i]; f.r+=real[i]; }
   }
+  const fmSoma=FACES.map((_,fi)=>{
+    let si=0, se=0;
+    for(let m=0;m<12;m++){ si+=fm[fi].i[m]; se+=fmE[fi][m]; }
+    return si>0 ? 1-se/si : 0;
+  });
   PERDAS={valido:true, horas,
-    total: ti>0 ? 1-tr/ti : 0,
+    geometrica: ti>0 ? 1-tr/ti : 0,
+    eletrica: ti>0 ? 1-te/ti : 0,
+    porFaceEletrica: fmSoma,
+    porFaceMesEletrica: fmE.map((v,fi)=>v.map((x,m)=>
+      fm[fi].i[m]>0 ? 1-x/fm[fi].i[m] : 0)),
+    total: ti>0 ? 1-(P.bypass?te:tr)/ti : 0,
     porFace: porFace.map(f=>f.i>0 ? 1-f.r/f.i : 0),
     porFaceMes: fm.map(f=>f.i.map((v,m)=>v>0 ? 1-f.r[m]/v : 0)),
     porModulo};
@@ -1240,7 +1290,8 @@ gid('btnAmpliarMapa').onclick = ()=>{
 };
 chips($('#datas'), [[80,'21/mar'],[172,'21/jun'],[266,'23/set'],[355,'21/dez']].map(([n,t])=>[String(n),t]),
   k=>String(P.dia)===k, k=>{ P.dia=+k; $('#dia').value=k; sincronizar(); montarAux(); tSombra=0; });
-chips($('#show'), [['verSombra','Sombra'],['verRota','Trajetória'],['verNorte','Norte'],['verFix','Fixação']],
+chips($('#show'), [['verSombra','Sombra'],['verRota','Trajetória'],['verNorte','Norte'],
+  ['verFix','Fixação'],['bypass','Perda elétrica']],
   k=>P[k], k=>{
     P[k]=!P[k];
     renderer.shadowMap.enabled=P.verSombra;
@@ -1572,8 +1623,9 @@ function calcularGeracao(){
       const noPlano = irradDiaC(DIA_REP[m], tilt, F.azi);
       const hspMes = P.hspMes ? P.hspMes[m] : P.hsp;
       const bruta = kwp*hspMes*(noPlano/horizontal)*prDoMes(m)*DIAS_MES[m];
-      const perda = (PERDAS.valido && PERDAS.porFaceMes && PERDAS.porFaceMes[i])
-        ? PERDAS.porFaceMes[i][m] : 0;
+      const mapa = P.bypass && PERDAS.porFaceMesEletrica
+        ? PERDAS.porFaceMesEletrica : PERDAS.porFaceMes;
+      const perda = (PERDAS.valido && mapa && mapa[i]) ? mapa[i][m] : 0;
       const liquida = bruta*(1-perda);
       meses[m] += liquida; brutos[m] += bruta;
       porFace[i].meses[m] += liquida;
@@ -1632,6 +1684,19 @@ function atualizarResumo(){
   $('#tFaces').innerHTML = linhasF.length ? linhasF.join('')
     : '<tr><td colspan="4">Nenhum módulo posicionado</td></tr>';
 
+  if(PERDAS.valido && PERDAS.eletrica!=null){
+    const g=PERDAS.geometrica*100, e=PERDAS.eletrica*100;
+    gid('notaSombra').innerHTML=
+      `Perda geométrica <b>${br(g,1)}%</b> · perda elétrica com bypass `+
+      `<b>${br(e,1)}%</b>`+
+      (e>g+0.05 ? ` — a sombra custa <b>${br(e/Math.max(0.01,g),1)}×</b> mais que a área `+
+        `sombreada, porque o diodo desliga um terço inteiro do módulo e a série limita `+
+        `a corrente.` : '.')+
+      `<br>Em uso: <b>${P.bypass?'elétrica':'geométrica'}</b> `+
+      `(alterne em Sol → Exibir → Perda elétrica).<br>`+
+      `Varredura de 12 dias × ${PERDAS.horas} passos, 3 substrings por módulo.`;
+    return;
+  }
   $('#notaSombra').innerHTML = PERDAS.valido
     ? `Perda média por sombra: <b>${br(PERDAS.total*100,1)}%</b> `+
       `(${br(gerSem-ger,0)} kWh/mês). Varredura de 12 dias × ${PERDAS.horas} passos, `+
@@ -2835,7 +2900,11 @@ function coletarProjeto(){
     } : null,
     horizonte_distante: P.horizonte
       ? {setores:SETORES, elevacao_graus:P.horizonte} : null,
-    perdas:{sombreamento_anual_pct: PERDAS.valido ? +(PERDAS.total*100).toFixed(1) : null,
+    perdas:{
+      modelo: P.bypass?'eletrico_com_bypass':'geometrico',
+      sombreamento_geometrico_pct: PERDAS.valido ? +(PERDAS.geometrica*100).toFixed(1) : null,
+      sombreamento_eletrico_pct: PERDAS.valido ? +(PERDAS.eletrica*100).toFixed(1) : null,
+      sombreamento_anual_pct: PERDAS.valido ? +(PERDAS.total*100).toFixed(1) : null,
       calculado: PERDAS.valido},
     geracao:{mensal_kwh:g.map(v=>Math.round(v)),
       anual_kwh:Math.round(g.reduce((a,b)=>a+b,0))}
@@ -3078,9 +3147,13 @@ function montarBriefing(){
     p('Compensação: ', br(G.media/P.consumo*100,0), '% do consumo médio');
   p('Irradiação: ', P.hspMes?P.fonteHsp:`HSP ${br(P.hsp,2)} informado`);
   p('Desempenho do sistema (PR): ', br(PR_MEDIO()*100,1), '%');
-  if(PERDAS.valido)
-    p('Sombreamento descontado: ', br(PERDAS.total*100,1),
-      '% (geométrico; o efeito elétrico com bypass tende a ser maior)');
+  if(PERDAS.valido){
+    p('Sombreamento descontado: ', br(PERDAS.total*100,1), '% — modelo ',
+      P.bypass?'ELÉTRICO (diodos de bypass e limitação em série)':'geométrico');
+    if(PERDAS.eletrica!=null)
+      p('  geométrico ', br(PERDAS.geometrica*100,1),
+        '% · elétrico ', br(PERDAS.eletrica*100,1), '%');
+  }
   else
     p('Sombreamento: NÃO CALCULADO nesta simulação.');
   p(PERDAS.valido
@@ -3220,39 +3293,30 @@ gid('btnPdf').onclick = async ()=>{
         cliente: gid('pjCliente').value.trim(),
         data: gid('pjData').value.trim()
       },
-      local:{ endereco: (gid('cep').value||'').trim() ||
+      local:{ endereco: (CONTA&&CONTA.endereco) || (gid('cep').value||'').trim() ||
               `Latitude ${br(P.lat,4)}, longitude ${br(P.lon,4)}` },
       sistema:{
         modulos: CONT.mod,
-        moduloNome: (CAT.acharModulo(P.moduloId)||{}).fabricante
-          ? `${CAT.acharModulo(P.moduloId).fabricante} ${P.modWp} W`
-          : `${P.modWp} W`,
         kwp: CONT.mod*MOD.Wp/1000,
-        area: CONT.mod*MOD.L*MOD.W,
-        peso: CONT.mod*MOD.kg,
-        inversor: ELE.valido
-          ? `${ELE.qtd>1?ELE.qtd+' × ':''}${ELE.inversor.nome} (${br(ELE.inversor.ca/1000,2)} kW)`
-          : '—',
-        strings: a && a.viavel
-          ? (a.micro ? `${a.unidades} microinversores · ${a.distribuicao.join(' + ')} módulos`
-                     : `${a.strings} string(s) de ${a.comprimentos.join(' + ')} módulos`)
-          : '—',
-        fdi: a && a.viavel ? a.fdi*100 : null,
-        fixacao: FIXES[fixAtual()],
+        superficie: `${TIPOS[P.tipo].n}, ${INFO.plano?'superfície plana':P.aguas+' água(s)'}`,
         inclinacao: INFO.plano ? P.tilt : P.incl,
-        orientacao: `${P.azi}° ${bussola(P.azi)}`
+        orientacao: bussola(P.azi),
+        inversor: ELE.valido
+          ? `${ELE.qtd>1?ELE.qtd+' × ':''}${ELE.inversor.nome} de ${br(ELE.inversor.ca/1000,2)} kW`
+          : 'a definir',
+        fixacao: FIXES[fixAtual()]
       },
       geracao:{
         meses: G.meses.map(v=>Math.round(v)),
         total: G.total, media: G.media,
-        fonte: P.hspMes ? P.fonteHsp : `HSP ${br(P.hsp,2)} estimado`,
+        cobertura: P.consumo>0 ? Math.round(G.media/P.consumo*100) : null,
+        fonte: P.hspMes ? P.fonteHsp : null,
         perdaSombra: PERDAS.valido ? PERDAS.total*100 : null,
         pr: PR_MEDIO()*100
       },
-      materiais: lerMateriais(),
+      analise: observacoesDoProjeto(),
       imagem
     });
-
     const nome=(gid('pjNome').value.trim()||'proposta')
       .toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
       .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40);
@@ -3263,6 +3327,40 @@ gid('btnPdf').onclick = async ()=>{
   }
   b.disabled=false; b.textContent='Gerar proposta PDF';
 };
+
+/* Observações do projeto em linguagem de cliente, geradas do que a simulação
+   encontrou. Só entram pontos que realmente se aplicam. */
+function observacoesDoProjeto(){
+  const o=[];
+  const faceIdeal = P.lat<0 ? 'norte' : 'sul';
+  FACES.forEach((F,i)=>{
+    const n=CONT.porFace[i]||0; if(!n) return;
+    const f=fatorPlano(F.plano?P.tilt:F.tilt, F.azi);
+    if(f<0.85) o.push(
+      `A superfície ${F.nome.toLowerCase()} recebe ${br(f*100,0)}% da luz que receberia `+
+      `voltada ao ${faceIdeal}. Foi aproveitada mesmo assim porque a geração adicional `+
+      `compensa, mas é bom saber que ela rende menos que as demais.`);
+  });
+  if(PERDAS.valido && PERDAS.total>0.03)
+    o.push(`Existe sombra sobre parte dos módulos em alguns períodos do dia. `+
+      `Ela foi medida hora a hora ao longo do ano e já está descontada da geração `+
+      `estimada — o número apresentado é o líquido, não o teórico.`);
+  if(P.horizonte){
+    const maior=Math.max(...P.horizonte);
+    if(maior>10) o.push(
+      `O relevo em volta do imóvel bloqueia o sol baixo do início e do fim do dia, `+
+      `chegando a ${br(maior,0)}° de elevação. Isso foi considerado no cálculo.`);
+  }
+  if(OBS.length) o.push(
+    `Foram levantados ${OBS.length} elemento(s) no local — `+
+    `${OBS.map(x=>OBSTIPOS[x.tipo].n.toLowerCase()).join(', ')} — `+
+    `e a sombra de cada um entrou na simulação.`);
+  if(ELE.valido && ELE.arranjo.viavel && ELE.arranjo.fdi>1.15)
+    o.push(`O inversor trabalha com folga de potência abaixo dos módulos, o que é `+
+      `proposital: aproveita melhor as horas de sol fraco e reduz o custo do `+
+      `equipamento sem perda relevante nos picos.`);
+  return o;
+}
 
 /* lê a lista de materiais já montada na tela */
 function lerMateriais(){
