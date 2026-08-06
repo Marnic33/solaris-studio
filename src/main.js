@@ -2456,6 +2456,12 @@ function mostrarConta(d){
     .forEach(([id,v])=>{ const el=document.getElementById(id); if(el && v!=null) el.value=v; });
   sincronizar();
 
+  /* dimensionamento a partir do consumo, para a sugestão da tela */
+  const hspRef = P.hspMes ? P.hspMes.reduce((a,b)=>a+b,0)/12 : P.hsp;
+  const dim = CAT.dimensionarPorConsumo(media, hspRef, P.modWp, PR_MEDIO());
+  const trif = P.ligacao==='trifasica';
+  const opcoes = CAT.inversoresPara(dim.potenciaKwp*1000, {trifasico: trif?true:null}).slice(0,3);
+
   let h=`<div class="cartao"><span class="tag">${(d.confianca||'').toUpperCase()}</span>`+
     `<h4>${d.titular||'Conta lida'}</h4><p>`+
     `${d.endereco||'—'}${d.bairro?', '+d.bairro:''}<br>`+
@@ -2946,7 +2952,10 @@ function montarBriefing(){
       '% (geométrico; o efeito elétrico com bypass tende a ser maior)');
   else
     p('Sombreamento: NÃO CALCULADO nesta simulação.');
-  p('A geração acima já inclui temperatura, perdas do sistema e sombreamento 3D.');
+  p(PERDAS.valido
+    ? 'A geração acima já inclui temperatura, perdas do sistema e sombreamento 3D.'
+    : 'A geração acima inclui temperatura e perdas do sistema, MAS NÃO o sombreamento — '+
+      'rode o cálculo de sombra no simulador antes de fechar a proposta.');
   p('Aplicar redutor comercial de 10 a 15% na apresentação ao cliente.');
   p('');
 
@@ -2961,7 +2970,7 @@ function montarBriefing(){
       i.distribuidor?` · ${i.distribuidor}`:'');
     p('Aceita bateria: ', i.baterias?'SIM (híbrido)':'NÃO (on-grid puro)');
     p('Arranjo: ', a.micro
-      ? `${a.unidades} microinversores · ${a.distribuicao.join(' + ')} módulos`
+      ? `${a.unidades} microinversores · ${a.distribuicao.join(' + ')} módulos cada`
       : `${a.strings} string(s) de ${a.comprimentos.join(' + ')} módulos`);
     p('FDI: ', br(a.fdi*100,0), '% (CC ', br((a.potenciaCC||0)/1000,2),
       ' kWp / CA ', br((a.potenciaCA||i.ca)/1000,2), ' kW)');
