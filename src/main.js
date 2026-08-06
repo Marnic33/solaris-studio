@@ -4,7 +4,6 @@ import { buscarIrradiacao, buscarCEP } from './nucleo/dados.js';
 import * as E from './nucleo/eletrico.js';
 import * as CAT from './nucleo/catalogo.js';
 import * as PJ from './nucleo/projetos.js';
-import { gerarRelatorio } from './nucleo/relatorio.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { lerConta, lerDatasheet } from './nucleo/dados.js';
 import './estilo.css';
@@ -13,6 +12,29 @@ import './estilo.css';
    SIMULADOR DE MONTAGEM FOTOVOLTAICA v2 · Trinity Solaris Brasil
    Metros. +X leste · +Z sul · -Z norte · +Y zênite. Azimute: 0=N, horário.
    ========================================================================= */
+/* Rede de segurança: erro solto vira aviso visível em vez de tela preta. */
+(function(){
+  const mostrar = (titulo, detalhe) => {
+    let cx = document.getElementById('erroGlobal');
+    if(!cx){
+      cx = document.createElement('div');
+      cx.id = 'erroGlobal';
+      cx.style.cssText = 'position:fixed;z-index:99;left:10px;right:10px;top:10px;'+
+        'background:rgba(23,29,37,.97);border:1px solid #e0644a;border-radius:3px;'+
+        'padding:12px 14px;font:12px/1.6 monospace;color:#e7ecf2;max-height:45vh;'+
+        'overflow:auto';
+      document.body.appendChild(cx);
+      cx.onclick = () => cx.remove();
+    }
+    cx.innerHTML = `<b style="color:#e0644a">${titulo}</b><br>`+
+      String(detalhe).slice(0,400)+
+      `<br><span style="opacity:.6">toque para fechar</span>`;
+  };
+  addEventListener('error', e => mostrar('Erro', e.message || e.error));
+  addEventListener('unhandledrejection', e =>
+    mostrar('Falha assíncrona', (e.reason && e.reason.message) || e.reason));
+})();
+
 const RAD = Math.PI/180;
 const MOD = {L:2.465, W:1.134, T:0.030, Wp:620, kg:34.6};
 const MODELOS = {
@@ -3043,7 +3065,8 @@ gid('btnPdf').onclick = async ()=>{
     const G=calcularGeracao();
     const a=ELE.valido?ELE.arranjo:null;
 
-    const doc=gerarRelatorio({
+    const { gerarRelatorio } = await import('./nucleo/relatorio.js');
+    const doc=await gerarRelatorio({
       projeto:{
         nome: gid('pjNome').value.trim() || 'Projeto fotovoltaico',
         cliente: gid('pjCliente').value.trim(),
