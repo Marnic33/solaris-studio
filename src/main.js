@@ -1109,6 +1109,12 @@ const STUB = new Proxy({}, {
   set: () => true
 });
 const gid = id => document.getElementById(id) || STUB;
+/* liga um evento apenas se o elemento existir de verdade */
+function ligar(id, evento, fn, opcoes){
+  const el = document.getElementById(id);
+  if(el) el.addEventListener(evento, fn, opcoes);
+  return el;
+}
 /* liga um handler só se o elemento existir — evita que uma peça faltando derrube tudo */
 function liga(id, evento, fn){
   const el = document.getElementById(id);
@@ -1250,11 +1256,13 @@ const SL=[['comp','comp'],['larg','larg'],['pd','pd'],['incl','incl'],['azi','az
           ['mwp','modWp'],['ml','modL'],['mw','modW'],['mk','modK'],
           ['bei','beiral'],['beh','beiralH'],['casax','casaX'],['casaz','casaZ'],
           ['tmin','tMin'],['tmax','tMaxAmb'],['invQtd','invQtd'],
-          ['invest','investimento'],['tarifa','tarifa'],['fiob','fioB'],
+          ['tarifa','tarifa'],['fiob','fioB'],
           ['consumo','consumo'],['tarifa','tarifa'],['fiob','fioB'],['cosip','cosip'],
           ['murh','murH'],['murw','murW']];
 SL.forEach(([id,key])=>{
-  document.getElementById(id).addEventListener('input', e=>{
+  const sl = document.getElementById(id);
+  if(!sl) return;                       // controle ausente no HTML: ignora
+  sl.addEventListener('input', e=>{
     P[key]=+e.target.value;
     if(key==='invQtd') P.invQtdAuto=false;
     if(['tarifa','fioB','consumo','cosip'].includes(key)){
@@ -1275,7 +1283,7 @@ SL.forEach(([id,key])=>{
     P.perdas[key]=+e.target.value; sincronizar(); atualizarResumo();
   });
 });
-gid('pdeg').addEventListener('input', e=>{
+ligar('pdeg', 'input', e=>{
   const v=+e.target.value;
   P.perdas.degradacao=v/2; P.perdas.indisponibilidade=v/2;
   sincronizar(); atualizarResumo();
@@ -1639,7 +1647,7 @@ function atualizarResumo(){
 }
 
 /* ===================== CEP ===================== */
-gid('cep').addEventListener('keydown', e=>{
+ligar('cep', 'keydown', e=>{
   if(e.key==='Enter'){ e.preventDefault(); gid('btnCep').click(); }
 });
 $('#btnCep').onclick = async ()=>{
@@ -1704,7 +1712,7 @@ gid('btnCoord').onclick = ()=>{
   if(!P.mapa){ P.mapa=true; sincronizar(); }
   carregarMapa();
 };
-gid('coord').addEventListener('keydown', e=>{
+ligar('coord', 'keydown', e=>{
   if(e.key==='Enter'){ e.preventDefault(); gid('btnCoord').click(); }
 });
 
@@ -2308,7 +2316,7 @@ function enquadrarGLB(){
 }
 
 /* largura real da fachada define a escala */
-gid('glbL').addEventListener('input', e=>{
+ligar('glbL', 'input', e=>{
   glb.largura=+e.target.value;
   if(glb.cru){
     glb.escala=+(glb.largura/Math.max(glb.cru.x, glb.cru.z)).toFixed(4);
