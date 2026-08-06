@@ -60,6 +60,7 @@ const P = {
   fix:'auto',
   lat:-23.32, lon:-46.58, tz:-3, dia:172, hora:12, hsp:4.6,
   verSombra:true, verRota:true, verNorte:true, verFix:true,
+  horizonte:null,
   mapa:false, mapaZ:20, mapaFonte:'esri', mapaT:6,
   hspMes:null, fonteHsp:null
 };
@@ -837,6 +838,19 @@ function montarAux(){
     s.position.set(0,0.8,-R); s.rotation.x=-Math.PI/2; gAux.add(s);
     gAux.add(letreiro('N','#e0644a',new THREE.Vector3(0,2.4,-R),2.2));
   }
+  if(P.horizonte){
+    const R=Math.max(P.comp,P.larg)*0.75+6;
+    const pts=[];
+    for(let a=0;a<=360;a+=5){
+      const alt=horizonteEm(a);
+      pts.push(new THREE.Vector3(
+        Math.sin(a*RAD)*Math.cos(alt*RAD)*R*1.32,
+        Math.sin(alt*RAD)*R*1.32,
+        -Math.cos(a*RAD)*Math.cos(alt*RAD)*R*1.32));
+    }
+    gAux.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({color:0x6b5b3a})));
+  }
   if(P.verRota){
     const pts=[];
     for(let h=0;h<=24;h+=0.25){
@@ -863,10 +877,34 @@ const esferaSol=new THREE.Mesh(new THREE.SphereGeometry(0.9,20,20),
   new THREE.MeshBasicMaterial({color:0xffd27a}));
 scene.add(esferaSol);
 
+/* ===================== horizonte distante =====================
+   Perfil de elevação do relevo em 12 setores de 30°, começando no norte.
+   Cada valor é a altura angular em graus até a linha do horizonte naquela
+   direção. Sol abaixo desse ângulo = sem irradiação direta. */
+const SETORES = ['N','NNE','NE','L','ESE','SE','S','SSO','SO','O','ONO','NO'];
+const PERFIS = {
+  livre:   {n:'Livre',        v:Array(12).fill(0)},
+  urbano:  {n:'Urbano',       v:[8,8,10,10,8,8,8,10,10,8,8,8]},
+  vale:    {n:'Vale',         v:[20,22,18,12,10,12,18,22,20,14,12,16]},
+  encosta: {n:'Encosta',      v:[25,22,15,6,4,4,6,10,14,18,22,25]}
+};
+
+/** Altura do horizonte numa direção, interpolada entre os setores. */
+function horizonteEm(azimute){
+  if(!P.horizonte) return 0;
+  const a=((azimute%360)+360)%360;
+  const passo=360/12, i=Math.floor(a/passo), f=(a-i*passo)/passo;
+  const v0=P.horizonte[i%12]||0, v1=P.horizonte[(i+1)%12]||0;
+  return v0+(v1-v0)*f;
+}
+/** O sol está acima do relevo nesta posição? */
+const solVisivel = s => s.alt > horizonteEm(s.azi);
+
 /* ===================== sombreamento ===================== */
 const ray = new THREE.Raycaster();
-function calcularSombra(dir, alt){
+function calcularSombra(dir, alt, azi){
   if(!CONT.centros.length) return;
+  const acimaDoHorizonte = alt > horizonteEm(azi==null?0:azi);
   const alvos=[];
   gCasa.traverse(o=>{ if(o.isMesh && o.parent!==gFix) alvos.push(o); });
   gObs.traverse(o=>{ if(o.isMesh) alvos.push(o); });
@@ -874,7 +912,7 @@ function calcularSombra(dir, alt){
   let som=0, soma=0;
   for(let i=0;i<CONT.centros.length;i++){
     soma += Math.max(0, CONT.normais[i].dot(dir));
-    if(alt<=0){ som++; continue; }
+    if(alt<=0 || !acimaDoHorizonte){ som++; continue; }
     ray.set(CONT.centros[i].clone().add(dir.clone().multiplyScalar(0.15)), dir);
     ray.far = 300;
     if(ray.intersectObjects(alvos,false).length) som++;
@@ -904,6 +942,7 @@ function calcularPerdasAnuais(){
     for(let h=4;h<=20;h+=dt){
       const s=solar(P.lat,P.lon,P.tz,dia,h);
       if(s.alt<=5) continue;
+      const visivel = solVisivel(s);
       horas++;
       const sv=vetorSol(s.alt,s.azi), sa=s.alt*RAD;
       const DNI=G0*Math.pow(0.7,Math.pow(AM_KY(sa),0.678));
@@ -916,7 +955,7 @@ function calcularPerdasAnuais(){
         const fmi = fm[CONT.faceDe[i]];
         ideal[i]+=(direta+difP)*dt;
         if(fmi){ fmi.i[m]+=(direta+difP)*dt; }
-        if(direta<=0){ real[i]+=difP*dt; if(fmi) fmi.r[m]+=difP*dt; continue; }
+        if(direta<=0 || !visivel){ real[i]+=difP*dt; if(fmi) fmi.r[m]+=difP*dt; continue; }
         /* três amostras ao longo do módulo: pega sombra parcial */
         let livres=0;
         for(const f of [-1,0,1]){
@@ -973,7 +1012,7 @@ function posicionarSol(agora){
   sol.color.setHSL(0.09,0.55,Math.min(.95,0.62+0.33*d));
 
   if(agora-tSombra>200){
-    tSombra=agora; calcularSombra(dir,s.alt); atualizarHUD(s);
+    tSombra=agora; calcularSombra(dir,s.alt,s.azi); atualizarHUD(s);
   }
 }
 function reconstruir(){
@@ -2517,14 +2556,18 @@ function mostrarConta(d){
 }
 
 /* ===================== importar datasheet ===================== */
-function abrirDatasheet(){ const a=gid('arqDatasheet'); if(a && a.click) a.click(); }
-gid('btnDatasheet').onclick = abrirDatasheet;
-gid('btnDatasheetMod').onclick = abrirDatasheet;
+let destinoDatasheet='saidaDatasheet';
+function abrirDatasheet(destino){
+  destinoDatasheet = destino || 'saidaDatasheet';
+  const a=gid('arqDatasheet'); if(a && a.click) a.click();
+}
+gid('btnDatasheet').onclick = ()=> abrirDatasheet('saidaDatasheet');
+gid('btnDatasheetMod').onclick = ()=> abrirDatasheet('saidaDatasheetMod');
 
 gid('arqDatasheet').onchange = async e=>{
   const f=e.target.files && e.target.files[0];
   if(!f) return;
-  const out=gid('saidaDatasheet');
+  const out=gid(destinoDatasheet);
   out.innerHTML='<div class="note">Lendo o datasheet… PDFs longos levam alguns segundos.</div>';
   gid('panel').classList.add('open');
   try{
@@ -2576,7 +2619,7 @@ function mostrarDatasheet(eq){
   if(faltando) h+=`<div class="note"><span class="al">Faltam dados de tensão ou corrente.</span> `+
      `Dá para salvar, mas a validação de string não vai funcionar direito.</div>`;
 
-  gid('saidaDatasheet').innerHTML=h;
+  gid(destinoDatasheet).innerHTML=h;
 
   gid('salvarEq').onclick=()=>{
     CAT.salvarEquipamento(eq);
@@ -2589,7 +2632,7 @@ function mostrarDatasheet(eq){
       });
       aplicarModulo();
     }
-    gid('saidaDatasheet').innerHTML=
+    gid(destinoDatasheet).innerHTML=
       `<div class="cartao"><h4>Adicionado</h4><p><b>${eq.fabricante} ${eq.nome||eq.linha}</b> `+
       `entrou no catálogo e já está selecionado. Ele fica salvo neste navegador — `+
       `use “Ver JSON” para levar ao catálogo do repositório.</p></div>`;
@@ -2600,7 +2643,7 @@ function mostrarDatasheet(eq){
     const limpo={...eq}; delete limpo.avisos; delete limpo.confianca;
     delete limpo.observacoes; delete limpo.categoria;
     const txt=JSON.stringify(limpo,null,2);
-    gid('saidaDatasheet').insertAdjacentHTML('beforeend',
+    gid(destinoDatasheet).insertAdjacentHTML('beforeend',
       `<div class="lbl">Para o catálogo</div>`+
       `<div class="note" style="white-space:pre-wrap;font-family:'IBM Plex Mono',monospace;`+
       `font-size:10.5px;max-height:220px;overflow:auto;border:1px solid var(--line);`+
@@ -2614,6 +2657,46 @@ function montarLigacao(){
   chips(gid('ligacao'),
     [['monofasica','Monofásica'],['bifasica','Bifásica'],['trifasica','Trifásica']],
     k=>P.ligacao===k, k=>{ P.ligacao=k; sincronizar(); });
+}
+
+function montarHorizonte(){
+  chips(gid('horPresets'),
+    [...Object.entries(PERFIS).map(([k,v])=>[k, v.n]), ['custom','Ajustar']],
+    k=> k==='custom' ? false
+       : (!P.horizonte && k==='livre') ||
+         (P.horizonte && PERFIS[k] && PERFIS[k].v.every((v,i)=>v===P.horizonte[i])),
+    k=>{
+      if(k==='custom'){ P.horizonte=[...(P.horizonte||PERFIS.urbano.v)]; }
+      else P.horizonte = k==='livre' ? null : [...PERFIS[k].v];
+      editorHorizonte(); sincronizar(); montarAux(); tSombra=0;
+    });
+  editorHorizonte();
+}
+function editorHorizonte(){
+  const cx=gid('horEditor');
+  if(!P.horizonte){ cx.innerHTML=''; atualizarNotaHorizonte(); return; }
+  cx.innerHTML = SETORES.map((nome,i)=>
+    `<div class="row" style="margin-bottom:2px">`+
+    `<div class="name">${nome}</div>`+
+    `<div class="val">${br(P.horizonte[i],0)}°</div></div>`+
+    `<input type="range" class="horSl" data-i="${i}" min="0" max="45" step="1" `+
+    `value="${P.horizonte[i]}">`).join('');
+  cx.querySelectorAll('.horSl').forEach(sl=>{
+    sl.addEventListener('input', e=>{
+      P.horizonte[+e.target.dataset.i]=+e.target.value;
+      editorHorizonte(); sincronizar(); montarAux(); tSombra=0;
+    });
+  });
+  atualizarNotaHorizonte();
+}
+function atualizarNotaHorizonte(){
+  const el=gid('notaHorizonte');
+  if(!P.horizonte){ el.textContent='Horizonte livre: nenhum relevo bloqueando o sol.'; return; }
+  const maior=Math.max(...P.horizonte);
+  const onde=SETORES[P.horizonte.indexOf(maior)];
+  const media=P.horizonte.reduce((a,b)=>a+b,0)/12;
+  el.innerHTML=`Maior obstrução: <b>${br(maior,0)}° a ${onde}</b> · média `+
+    `${br(media,0)}°.<br>Recalcule as perdas por sombra para ver o efeito no ano.`;
 }
 
 /* ===================== painel elétrico ===================== */
@@ -2750,6 +2833,8 @@ function coletarProjeto(){
       vpl_25anos_rs: ECON.vpl, economia_mes1_rs: ECON.economiaMes1,
       custo_fio_b_25anos_rs: ECON.fioB25, lcoe_rs_kwh: ECON.lcoe
     } : null,
+    horizonte_distante: P.horizonte
+      ? {setores:SETORES, elevacao_graus:P.horizonte} : null,
     perdas:{sombreamento_anual_pct: PERDAS.valido ? +(PERDAS.total*100).toFixed(1) : null,
       calculado: PERDAS.valido},
     geracao:{mensal_kwh:g.map(v=>Math.round(v)),
@@ -2777,24 +2862,53 @@ async function chamarIA(prompt){
 
 function montarPrompt(pergunta){
   const dados=JSON.stringify(coletarProjeto(),null,1);
-  return `Você é engenheiro projetista de sistemas fotovoltaicos no Brasil, com experiência em `+
-`dimensionamento, sombreamento e normas ABNT. Analise criticamente o projeto abaixo, que veio `+
-`de um simulador 3D. Convenções: azimute 0°=Norte, 180°=Sul, sentido horário; hemisfério sul, `+
-`portanto o ideal é face norte com inclinação próxima à latitude. O "fator_orientacao_pct" é `+
-`relativo ao plano ideal. Perdas de sombra são geométricas (não consideram diodos de bypass).
+  return `Você é engenheiro projetista de sistemas fotovoltaicos no Brasil, com experiência `+
+`em dimensionamento, sombreamento, montagem de strings e normas ABNT. Analise criticamente `+
+`o projeto abaixo, que veio de um simulador 3D.
 
-`+(pergunta ? `Pergunta específica do usuário: "${pergunta}"\n\n` : '')+
-`Seja específico e quantitativo. Aponte o que está errado ou subaproveitado, e proponha `+
-`mudanças concretas de inclinação, azimute, espaçamento, orientação dos módulos, remoção de `+
-`obstáculo ou realocação de fileiras. Não elogie sem motivo. Se algo estiver bem resolvido, `+
-`diga em uma linha e siga.
+CONVENÇÕES
+- Azimute: 0°=Norte, 90°=Leste, 180°=Sul, 270°=Oeste, sentido horário.
+- Hemisfério sul: o ideal é face norte com inclinação próxima à latitude.
+- "fator_orientacao_pct" é relativo ao plano ideal daquela latitude.
+- Perdas de sombra são geométricas: não consideram diodos de bypass, então o efeito `+
+`elétrico real é maior que o percentual informado.
+- FDI é a razão entre potência CC dos módulos e potência CA do inversor.
 
-Responda SOMENTE com JSON válido, sem markdown, sem crases, neste formato:
-{"diagnostico":"2 a 3 frases sobre o estado geral",
- "notas":[{"titulo":"curto","texto":"analise com numeros","impacto":"alto|medio|baixo"}],
- "acoes":["acao objetiva 1","acao objetiva 2"],
- "riscos":["risco ou verificacao pendente"]}
-Máximo 5 notas, 5 ações, 4 riscos.
+`+(pergunta ? `PERGUNTA ESPECÍFICA DO USUÁRIO: "${pergunta}"\n\n` : '')+
+`O QUE ESPERO DE VOCÊ
+Não descreva o que já está no JSON. Aponte o que está errado, subaproveitado ou arriscado,
+e proponha mudanças concretas com o ganho estimado. Cada proposta precisa dizer o que mudar,
+por que, e quanto se ganha ou se perde — em kWh, em porcentagem ou em quantidade de peças.
+
+Procure especificamente por:
+- Água com fator de orientação baixo que talvez não valha ocupar
+- Inclinação longe da ideal para a latitude, e quanto custa isso
+- Sombreamento concentrado em poucos módulos, que sugere realocar em vez de aceitar
+- FDI fora da faixa saudável (0,9 a 1,3), sobrecarga ou inversor ocioso
+- Tensão de string perto demais do limite do inversor
+- Entradas de MPPT sem uso, ou strings desiguais na mesma entrada
+- Espaçamento entre fileiras maior que o necessário, desperdiçando área
+- Obstáculo cuja remoção ou realocação renderia mais que o custo
+- Módulo de outra potência que caberia melhor na área disponível
+
+Se algo está bem resolvido, diga em uma linha e siga. Não elogie sem número.
+
+RESPONDA SOMENTE com JSON válido, sem markdown e sem crases:
+{
+ "diagnostico": "2 a 3 frases sobre o estado geral do projeto",
+ "notas": [
+   {"titulo":"curto", "texto":"análise com números", "impacto":"alto|medio|baixo"}
+ ],
+ "melhorias": [
+   {"titulo":"o que mudar",
+    "como":"instrução prática, dizendo qual controle do simulador mexer",
+    "ganho":"estimativa quantificada do efeito",
+    "esforco":"baixo|medio|alto"}
+ ],
+ "acoes": ["ação objetiva e imediata"],
+ "riscos": ["risco ou verificação pendente antes de fechar a proposta"]
+}
+Máximo 5 notas, 5 melhorias, 4 ações, 4 riscos.
 
 PROJETO:
 ${dados}`;
@@ -2815,8 +2929,19 @@ function renderIA(txt){
     h+=`<div class="cartao ${n.impacto||''}"><span class="tag">${(n.impacto||'').toUpperCase()}</span>`+
        `<h4>${n.titulo||''}</h4><p>${n.texto||''}</p></div>`;
   });
+  if((d.melhorias||[]).length){
+    h+=`<div class="lbl">Melhorias propostas</div>`;
+    d.melhorias.forEach(m=>{
+      h+=`<div class="cartao ${m.esforco==='baixo'?'':'medio'}">`+
+         `<span class="tag">${(m.esforco||'').toUpperCase()}</span>`+
+         `<h4>${m.titulo||''}</h4>`+
+         `<p>${m.como||''}</p>`+
+         (m.ganho?`<p style="margin-top:5px;color:var(--cyan)">Ganho: ${m.ganho}</p>`:'')+
+         `</div>`;
+    });
+  }
   if((d.acoes||[]).length)
-    h+=`<div class="lbl">O que fazer</div><ul class="lista">`+
+    h+=`<div class="lbl">O que fazer agora</div><ul class="lista">`+
        d.acoes.map(a=>`<li>${a}</li>`).join('')+`</ul>`;
   if((d.riscos||[]).length)
     h+=`<div class="lbl">Verificar</div><ul class="lista">`+
@@ -2929,6 +3054,12 @@ function montarBriefing(){
   if(C.icms_pct) p('ICMS: ', br(C.icms_pct,1), '%');
   if(C.bandeira) p('Bandeira do mês: ', C.bandeira);
   p('Custo de disponibilidade: ', disp, ' kWh/mês (não compensável)');
+  if(P.horizonte){
+    const maior=Math.max(...P.horizonte);
+    p('Horizonte distante considerado: até ',
+      br(maior,0), '° a ', SETORES[P.horizonte.indexOf(maior)],
+      ' (relevo bloqueando sol baixo)');
+  }
   if(C.ja_tem_geracao) p('ATENÇÃO: a conta já indica geração própria nesta UC.');
   p('');
 
@@ -3246,6 +3377,7 @@ etapa('cena',             ()=> reconstruir());
 etapa('obstáculo padrão', ()=> novoObstaculo('cxQuadrada'));
 etapa('enquadramento',    ()=>{ enquadrar(); listarObstaculos(); });
 etapa('ligação',          ()=> montarLigacao());
+etapa('horizonte',        ()=> montarHorizonte());
 etapa('projetos',         ()=>{
   gid('pjData').value = new Date().toISOString().slice(0,10);
   listarProjetos();
