@@ -1387,8 +1387,6 @@ ligar('pdeg', 'input', e=>{
 });
 $('#hora').addEventListener('input', e=>{ P.hora=+e.target.value; sincronizar(); });
 
-let editando=false;
-
 /**
  * Converte cada controle deslizante num campo de digitação permanente.
  * O elemento range continua no HTML guardando min, max e passo, e recebe o
@@ -1428,25 +1426,39 @@ function ativarEdicaoNumerica(){
     val.dataset.unidade = unidade;
     sl.dataset.campo = '1';
 
-    const aplicar = ()=>{
-      let v = parseFloat(String(inp.value).replace(',','.'));
-      if(isNaN(v)){ inp.value = sl.value; inp.classList.remove('fora'); return; }
-      const min = +sl.min, max = +sl.max;
-      const cortado = Math.min(max, Math.max(min, v));
-      inp.classList.toggle('fora', cortado !== v);
-      if(cortado !== v) inp.value = cortado;
-      if(+sl.value === cortado) return;
-      sl.value = cortado;
-      editando = true;                    /* impede sincronizar de sobrescrever */
+    /* Durante a digitação NÃO corta o valor: escrever "12" num campo de
+       mínimo 3 passaria pelo "1", que seria cortado e travaria a entrada.
+       Fora da faixa só marca em vermelho; o ajuste acontece ao sair. */
+    const enviar = valor=>{
+      if(+sl.value === valor) return;
+      sl.value = valor;
       sl.dispatchEvent(new Event('input', {bubbles:true}));
-      editando = false;
     };
 
-    inp.addEventListener('input', aplicar);
-    inp.addEventListener('focus', ()=>{ editando = true; inp.select(); });
-    inp.addEventListener('blur', ()=>{
-      editando = false; inp.classList.remove('fora'); sincronizar();
-    });
+    const digitando = ()=>{
+      const texto = String(inp.value).replace(',','.').trim();
+      if(texto === '' || texto === '-' || texto.endsWith('.')) return;  // ainda escrevendo
+      const v = parseFloat(texto);
+      if(isNaN(v)) return;
+      const min = +sl.min, max = +sl.max;
+      const fora = v < min || v > max;
+      inp.classList.toggle('fora', fora);
+      if(!fora) enviar(v);
+    };
+
+    const finalizar = ()=>{
+      const texto = String(inp.value).replace(',','.').trim();
+      let v = parseFloat(texto);
+      if(isNaN(v)) v = +sl.value;                       // desiste: volta ao anterior
+      v = Math.min(+sl.max, Math.max(+sl.min, v));      // aqui sim ajusta à faixa
+      inp.classList.remove('fora');
+      inp.value = v;
+      enviar(v);
+    };
+
+    inp.addEventListener('input', digitando);
+    inp.addEventListener('focus', ()=> inp.select());
+    inp.addEventListener('blur', ()=>{ finalizar(); sincronizar(); });
     inp.addEventListener('keydown', e=>{
       if(e.key === 'Enter'){ e.preventDefault(); inp.blur(); }
       if(e.key === 'Escape'){ inp.value = sl.value; inp.blur(); }
@@ -1464,7 +1476,8 @@ function porValor(id, valor, unidade){
   if(document.activeElement === inp) return;
   const casas = String(sl.step||'').includes('.')
     ? String(sl.step).split('.')[1].length : 0;
-  inp.value = Number(valor).toFixed(casas);
+  const novo = Number(valor).toFixed(casas);
+  if(+inp.value !== +novo) inp.value = novo;
   if(unidade){
     const un = linha.querySelector('.un');
     if(un) un.textContent = unidade;
@@ -1472,7 +1485,9 @@ function porValor(id, valor, unidade){
 }
 
 function sincronizar(){
-  if(editando) return;
+  /* não redesenha enquanto alguém digita num campo */
+  const ativo = document.activeElement;
+  if(ativo && ativo.classList && ativo.classList.contains('campo')) return;
   /* devolve aos campos os valores que o próprio código alterou */
   document.querySelectorAll('input[type=range][data-campo]').forEach(sl=>{
     const linha = sl.previousElementSibling;
