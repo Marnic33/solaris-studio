@@ -1466,6 +1466,27 @@ function ativarEdicaoNumerica(){
   });
 }
 
+/**
+ * Escreve um valor na célula de leitura.
+ * Se ela já virou campo de digitação, atualiza o campo e a unidade em vez de
+ * sobrescrever o conteúdo — o que apagaria o campo. Nunca mexe no elemento
+ * que está em foco.
+ */
+function mostrar(id, texto){
+  const el = document.getElementById(id);
+  if(!el) return;
+  const inp = el.querySelector('.campo');
+  if(!inp){ el.textContent = texto; return; }
+  if(document.activeElement === inp) return;
+  const t = String(texto).trim();
+  const m = t.match(/^(-?[\d.,]+)\s*(.*)$/);
+  if(!m) return;
+  const numero = m[1].replace(/\./g,'').replace(',','.');
+  if(+inp.value !== +numero && !isNaN(+numero)) inp.value = numero;
+  const un = el.querySelector('.un');
+  if(un && m[2]) un.textContent = m[2];
+}
+
 /** Atualiza um campo já convertido, sem atrapalhar quem está digitando. */
 function porValor(id, valor, unidade){
   const sl = document.getElementById(id);
@@ -1495,71 +1516,71 @@ function sincronizar(){
     if(inp && document.activeElement !== inp && +inp.value !== +sl.value)
       inp.value = sl.value;
   });
-  $('#vComp').textContent=br(P.comp,1)+' m';
-  $('#vLarg').textContent=br(P.larg,1)+' m';
-  $('#vPd').textContent=br(P.pd,1)+' m';
-  $('#vIncl').textContent=P.incl+'°';
-  $('#vAzi').textContent=P.azi+'° '+bussola(P.azi);
-  $('#vGu').textContent=br(P.gu,2)+' m';
-  $('#vGv').textContent=br(P.gv,2)+' m';
-  $('#vOu').textContent=br(P.ou,2)+' m';
-  $('#vOv').textContent=br(P.ov,2)+' m';
-  $('#vMax').textContent=P.max;
-  $('#vTilt').textContent=P.tilt+'°';
-  $('#vLat').textContent=br(P.lat,2);
-  $('#vLon').textContent=br(P.lon,2);
-  $('#vDia').textContent=dataDoDia(P.dia);
-  $('#vHsp').textContent=br(P.hsp,2);
-  gid('vTarifa').textContent=br(P.tarifa,2);
-  gid('vFioB').textContent=br(P.fioB,2);
-  gid('vConsumo').textContent=br(P.consumo,0)+' kWh';
-  gid('vAnoCon').textContent=P.anoConexao;
-  gid('vInfl').textContent=br(P.inflacao,1)+' %';
-  gid('vOem').textContent='R$ '+br(P.oem,0);
-  gid('vGlbE').textContent=br(glb.escala,3)+'×';
-  gid('vGlbR').textContent=glb.rot+'°';
-  gid('vGlbRX').textContent=br(glb.rx,0)+'°';
-  gid('vGlbRZ').textContent=br(glb.rz,0)+'°';
-  gid('vGlbX').textContent=br(glb.x,1)+' m';
-  gid('vGlbY').textContent=br(glb.y,1)+' m';
-  gid('vGlbZ').textContent=br(glb.z,1)+' m';
-  gid('vGlbL').textContent=br(glb.largura,1)+' m';
+  mostrar('vComp', br(P.comp,1)+' m');
+  mostrar('vLarg', br(P.larg,1)+' m');
+  mostrar('vPd', br(P.pd,1)+' m');
+  mostrar('vIncl', P.incl+'°');
+  mostrar('vAzi', P.azi+'° '+bussola(P.azi));
+  mostrar('vGu', br(P.gu,2)+' m');
+  mostrar('vGv', br(P.gv,2)+' m');
+  mostrar('vOu', br(P.ou,2)+' m');
+  mostrar('vOv', br(P.ov,2)+' m');
+  mostrar('vMax', P.max);
+  mostrar('vTilt', P.tilt+'°');
+  mostrar('vLat', br(P.lat,2));
+  mostrar('vLon', br(P.lon,2));
+  mostrar('vDia', dataDoDia(P.dia));
+  mostrar('vHsp', br(P.hsp,2));
+  mostrar('vTarifa', br(P.tarifa,2));
+  mostrar('vFioB', br(P.fioB,2));
+  mostrar('vConsumo', br(P.consumo,0)+' kWh');
+  mostrar('vAnoCon', P.anoConexao);
+  mostrar('vInfl', br(P.inflacao,1)+' %');
+  mostrar('vOem', 'R$ '+br(P.oem,0));
+  mostrar('vGlbE', br(glb.escala,3)+'×');
+  mostrar('vGlbR', glb.rot+'°');
+  mostrar('vGlbRX', br(glb.rx,0)+'°');
+  mostrar('vGlbRZ', br(glb.rz,0)+'°');
+  mostrar('vGlbX', br(glb.x,1)+' m');
+  mostrar('vGlbY', br(glb.y,1)+' m');
+  mostrar('vGlbZ', br(glb.z,1)+' m');
+  mostrar('vGlbL', br(glb.largura,1)+' m');
   if(glb.cru){
     const c=glb.cru, e=glb.escala;
     gid('glbMedida').innerHTML=
       `Na cena: <b>${br(c.x*e,1)} × ${br(c.z*e,1)} m</b>, altura <b>${br(c.y*e,1)} m</b>.`;
   }
-  gid('vConsumo').textContent=br(P.consumo||0,0)+' kWh';
-  gid('vTarifa').textContent=br(P.tarifa||0,3);
-  gid('vFioB').textContent=br(P.fioB||0,3);
-  gid('vCosip').textContent=br(P.cosip||0,2);
+  mostrar('vConsumo', br(P.consumo||0,0)+' kWh');
+  mostrar('vTarifa', br(P.tarifa||0,3));
+  mostrar('vFioB', br(P.fioB||0,3));
+  mostrar('vCosip', br(P.cosip||0,2));
   const disp={monofasica:30,bifasica:50,trifasica:100}[P.ligacao]||30;
   gid('notaTarifa').innerHTML=
     `Fio B: <b>${P.fioBOrigem||'não informado'}</b>.<br>`+
     `Custo de disponibilidade da ligação ${P.ligacao||'—'}: <b>${disp} kWh/mês</b>.`;
   document.querySelectorAll('#ligacao .chip').forEach(c=>
     c.classList.toggle('on', c.dataset.k===P.ligacao));
-  $('#vTmin').textContent=P.tMin+' °C';
-  $('#vTmax').textContent=P.tMaxAmb+' °C';
-  $('#vPsuj').textContent=br(P.perdas.sujeira,1)+' %';
-  $('#vPmis').textContent=br(P.perdas.mismatch,1)+' %';
-  $('#vPcab').textContent=br(P.perdas.cabeamento,1)+' %';
-  $('#vPref').textContent=br(P.perdas.reflexao,1)+' %';
-  $('#vPdeg').textContent=br(P.perdas.degradacao+P.perdas.indisponibilidade,1)+' %';
+  mostrar('vTmin', P.tMin+' °C');
+  mostrar('vTmax', P.tMaxAmb+' °C');
+  mostrar('vPsuj', br(P.perdas.sujeira,1)+' %');
+  mostrar('vPmis', br(P.perdas.mismatch,1)+' %');
+  mostrar('vPcab', br(P.perdas.cabeamento,1)+' %');
+  mostrar('vPref', br(P.perdas.reflexao,1)+' %');
+  mostrar('vPdeg', br(P.perdas.degradacao+P.perdas.indisponibilidade,1)+' %');
   document.querySelectorAll('#invLista .chip').forEach(c=>
     c.classList.toggle('on', c.dataset.k===P.inversor));
-  $('#vCasaX').textContent=br(P.casaX,1)+' m';
-  $('#vCasaZ').textContent=br(P.casaZ,1)+' m';
-  $('#vMurH').textContent=br(P.murH,2)+' m';
-  $('#vMurW').textContent=br(P.murW,2)+' m';
+  mostrar('vCasaX', br(P.casaX,1)+' m');
+  mostrar('vCasaZ', br(P.casaZ,1)+' m');
+  mostrar('vMurH', br(P.murH,2)+' m');
+  mostrar('vMurW', br(P.murW,2)+' m');
   $('#notaMur').innerHTML = P.tipo==='laje'
     ? (P.murH>0.01
        ? `Murinho de <b>${br(P.murH,2)} m</b> em volta. A área de montagem recua `+
          `${br(P.murW,2)} m de cada lado e a platibanda entra no cálculo de sombra.`
        : 'Altura zero: laje sem platibanda.')
     : 'A platibanda vale para o tipo Laje.';
-  $('#vBei').textContent=br(P.beiral,2)+' m';
-  $('#vBeh').textContent=br(P.beiralH,2)+' m';
+  mostrar('vBei', br(P.beiral,2)+' m');
+  mostrar('vBeh', br(P.beiralH,2)+' m');
   $('#notaBei').innerHTML = (P.tipo==='laje'||P.tipo==='solo')
     ? `A laje avança <b>${br(P.beiral,2)} m</b> além da alvenaria, com borda de `+
       `${br(P.beiralH,2)} m — a área de montagem acompanha o avanço.`
@@ -1567,10 +1588,10 @@ function sincronizar(){
       `<b>${br(P.beiral*Math.tan(P.incl*RAD),2)} m</b> em relação ao topo da alvenaria.`;
   document.querySelectorAll('#terrenos .chip').forEach(c=>
     c.classList.toggle('on', c.dataset.k===P.terreno));
-  $('#vWp').textContent=P.modWp+' Wp';
-  $('#vML').textContent=P.modL+' mm';
-  $('#vMW').textContent=P.modW+' mm';
-  $('#vMK').textContent=br(P.modK,1)+' kg';
+  mostrar('vWp', P.modWp+' Wp');
+  mostrar('vML', P.modL+' mm');
+  mostrar('vMW', P.modW+' mm');
+  mostrar('vMK', br(P.modK,1)+' kg');
   const areaM=(P.modL/1000)*(P.modW/1000);
   $('#notaMod').innerHTML=
     `Área ${br(areaM,2)} m² · densidade <b>${br(P.modWp/areaM,0)} W/m²</b> · `+
@@ -1581,9 +1602,9 @@ function sincronizar(){
   if(o){
     $('#ox').value=o.x; $('#oz').value=o.z; $('#ol').value=o.l;
     $('#op').value=o.p; $('#oh').value=o.h; $('#or').value=o.r;
-    $('#vOx').textContent=br(o.x,1)+' m'; $('#vOz').textContent=br(o.z,1)+' m';
-    $('#vOl').textContent=br(o.l,1)+' m'; $('#vOp').textContent=br(o.p,1)+' m';
-    $('#vOh').textContent=br(o.h,1)+' m'; $('#vOr').textContent=o.r+'°';
+    mostrar('vOx', br(o.x,1)+' m'); mostrar('vOz', br(o.z,1)+' m');
+    mostrar('vOl', br(o.l,1)+' m'); mostrar('vOp', br(o.p,1)+' m');
+    mostrar('vOh', br(o.h,1)+' m'); mostrar('vOr', o.r+'°');
   }
   const hh=Math.floor(P.hora), mm=Math.round((P.hora-hh)*60);
   $('#relogio').textContent=String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0');
@@ -1923,7 +1944,7 @@ gid('undo').onclick = desfazer;
 const VELS=[0.5,1,2,4,8,16]; let iVel=1;
 gid('vel').onclick = ()=>{
   iVel=(iVel+1)%VELS.length;
-  gid('vel').textContent=VELS[iVel]+'×';
+  mostrar('vel', VELS[iVel]+'×');
 };
 let tocando=false;
 $('#play').onclick=()=>{
@@ -2927,7 +2948,7 @@ function atualizarEletrico(){
     `${i.mppt} MPPT (${i.mppt*i.stringsPorMppt} entradas) · eficiência ${br(i.eficiencia*100,1)}%<br>`+
     `MPPT de ${i.vMin} a ${i.vMax} V · máximo ${i.iMaxMppt} A por entrada.`;
 
-  gid('vInvQtd').textContent = P.invQtd + (P.invQtdAuto?' (auto)':'');
+  mostrar('vInvQtd', P.invQtd + (P.invQtdAuto?' (auto)':''));
   gid('invQtd').value = P.invQtd;
   chips(gid('invQtdAuto'), [['auto','Calcular sozinho'],['manual','Definir eu mesmo']],
     k=>(k==='auto')===P.invQtdAuto,
