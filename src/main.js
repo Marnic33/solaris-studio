@@ -68,7 +68,8 @@ function aplicarModulo(){
   MOD.L = P.modL/1000; MOD.W = P.modW/1000; MOD.Wp = P.modWp; MOD.kg = P.modK;
 }
 const PASSO = 0.05;              // deslocamento por toque nas setas
-const oriFileira = {};           // "face:fileira" -> 'retrato' | 'paisagem'
+const oriFileira = {};
+const colFileira = {};   // "face:fileira" -> máximo de módulos naquela fileira           // "face:fileira" -> 'retrato' | 'paisagem'
 const ajusteFileira = {};        // "face:fileira" -> {du, dv}
 const fileirasFora = new Set();  // "face:fileira" removida inteira
 const removidos  = new Set();    // "face:fileira:coluna"
@@ -602,7 +603,7 @@ function dentro(poly,x,y){
   }
   return d;
 }
-let CONT = {mod:0, porFace:[], trilho:0, fix:0, triangulos:0, centros:[], normais:[],
+let CONT = {mod:0, linhas:[], porFace:[], trilho:0, fix:0, triangulos:0, centros:[], normais:[],
             eixos:[], meio:[], faceDe:[], sombreados:0, incid:0, passoMin:0, fileiras:0};
 let PERDAS = {valido:false, total:0, porFace:[], porFaceMes:null, porModulo:[], horas:0};
 let malhasModulo = [];
@@ -615,7 +616,7 @@ function montarModulos(){
     }
   });
   malhasModulo = [];
-  CONT = {mod:0, porFace:FACES.map(()=>0), trilho:0, fix:0, triangulos:0,
+  CONT = {mod:0, linhas:[], porFace:FACES.map(()=>0), trilho:0, fix:0, triangulos:0,
           centros:[], normais:[], eixos:[], meio:[], faceDe:[],
           sombreados:0, incid:0, passoMin:0, fileiras:0};
   PERDAS.valido = false;
@@ -656,9 +657,11 @@ function montarModulos(){
       const vPos = v + aj.dv;
       const linha = [];
       let u = P.ou + aj.du, coluna = 0;
+      const maxCol = colFileira[chaveF];   // indefinido = sem limite
 
       if(!fileirasFora.has(chaveF)){
-        while(u + mu <= F.largura - P.ou + aj.du && CONT.mod < P.max && nesta < limiteFace){
+        while(u + mu <= F.largura - P.ou + aj.du && CONT.mod < P.max && nesta < limiteFace
+              && (maxCol===undefined || linha.length < maxCol)){
           const cu = u + mu/2, cv = vPos + usoV/2;
           const ok = [[cu-mu/2,cv-usoV/2],[cu+mu/2,cv-usoV/2],
                       [cu+mu/2,cv+usoV/2],[cu-mu/2,cv+usoV/2]]
@@ -672,10 +675,16 @@ function montarModulos(){
           u += mu + P.gu; coluna++;
         }
       }
+      /* quantos caberiam sem limite, para mostrar na interface */
+      let colunaMax=0, uu=P.ou + aj.du;
+      while(uu + mu <= F.largura - P.ou + aj.du){ colunaMax++; uu += mu + P.gu; }
       if(linha.length){
         CONT.fileiras++;
         criarFixacao(F, fi, linha, vPos, usoV, mu, mv, tilt);
       }
+      /* guarda a fileira mesmo vazia: o usuário pode querer reativá-la */
+      CONT.linhas.push({face:fi, faceNome:F.nome, fileira, chave:chaveF,
+        modulos:linha.length, ori, cabem:colunaMax, plano:!!F.plano});
       v += usoV + extra; fileira++;
     }
   }
@@ -1095,7 +1104,8 @@ const historico = [];
 function snapshot(){
   historico.push(JSON.stringify({
     rm:[...removidos], ff:[...fileirasFora],
-    ori:{...oriFileira}, aj:JSON.parse(JSON.stringify(ajusteFileira))
+    ori:{...oriFileira}, col:{...colFileira},
+    aj:JSON.parse(JSON.stringify(ajusteFileira))
   }));
   if(historico.length>80) historico.shift();
   botaoDesfazer();
@@ -1107,6 +1117,8 @@ function desfazer(){
   fileirasFora.clear(); d.ff.forEach(k=>fileirasFora.add(k));
   for(const k in oriFileira) delete oriFileira[k];
   Object.assign(oriFileira, d.ori);
+  for(const k in colFileira) delete colFileira[k];
+  Object.assign(colFileira, d.col||{});
   for(const k in ajusteFileira) delete ajusteFileira[k];
   Object.assign(ajusteFileira, d.aj);
   fecharSelecao(); refazer(); botaoDesfazer();
@@ -1175,6 +1187,7 @@ $('#restaurar') && ($('#restaurar').onclick = ()=>{
   removidos.clear(); fileirasFora.clear();
   for(const k in oriFileira) delete oriFileira[k];
   for(const k in ajusteFileira) delete ajusteFileira[k];
+  for(const k in colFileira) delete colFileira[k];
   refazer();
 });
 
@@ -1844,6 +1857,7 @@ function atualizarResumo(){
   $('#bom').innerHTML=itens.map(l=>`<tr><td>${l[0]}</td><td>${l[1]}</td><td>${l[2]}</td></tr>`).join('');
 
   desenharGrafico();
+  editorFileiras();
   $('#rNota').innerHTML=
     `Área de módulos <b>${br(CONT.mod*MOD.L*MOD.W,1)} m²</b> · `+
     `${TIPOS[P.tipo].n}, ${INFO.plano?'plano':P.aguas+' água(s)'}, azimute ${P.azi}° ${bussola(P.azi)}.<br>`+
@@ -2280,6 +2294,7 @@ function capturarEstado(){
     ajusteFileira:JSON.parse(JSON.stringify(ajusteFileira)),
     removidos:[...removidos],
     fileirasFora:[...fileirasFora],
+    colFileira:{...colFileira},
     equipamentos: CAT.importados(),
     versao:3
   };
@@ -2298,6 +2313,8 @@ function aplicarEstado(e){
   Object.assign(oriFileira, e.oriFileira||{});
   for(const k in ajusteFileira) delete ajusteFileira[k];
   Object.assign(ajusteFileira, e.ajusteFileira||{});
+  for(const k in colFileira) delete colFileira[k];
+  Object.assign(colFileira, e.colFileira||{});
   removidos.clear(); (e.removidos||[]).forEach(k=>removidos.add(k));
   fileirasFora.clear(); (e.fileirasFora||[]).forEach(k=>fileirasFora.add(k));
   obsSel = OBS.length?0:-1;
