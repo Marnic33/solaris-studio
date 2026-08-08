@@ -97,14 +97,12 @@
       <div class="note" id="pjMsg">Os projetos ficam salvos neste navegador. Exporte
         para levar a outro aparelho ou guardar junto da proposta.</div>
 
-      <div class="lbl">Neste aparelho</div>
-      <div id="pjLista"></div>
-
-      <div class="lbl">Na nuvem</div>
+      <div class="lbl">Projetos</div>
       <div class="acts" style="margin-top:0">
-        <button class="btn" id="pjNuvem">Buscar projetos da nuvem</button>
+        <button class="btn" id="pjNuvem">Atualizar lista</button>
       </div>
       <div id="pjListaNuvem"></div>
+      <div id="pjLista" style="display:none"></div>
 
       <div class="lbl">Arquivo</div>
       <div class="acts" style="margin-top:0">
@@ -131,8 +129,13 @@
         <input type="range" id="glbX" min="-100" max="100" step="0.5" value="0">
         <div class="row" style="margin-top:10px"><div class="name">Sul (+) / Norte (−)</div><div class="val" id="vGlbZ">0,0 m</div></div>
         <input type="range" id="glbZ" min="-100" max="100" step="0.5" value="0">
-        <div class="row" style="margin-top:10px"><div class="name">Rotação</div><div class="val" id="vGlbR">0°</div></div>
+        <div class="row" style="margin-top:10px"><div class="name">Giro horizontal</div><div class="val" id="vGlbR">0°</div></div>
         <input type="range" id="glbR" min="0" max="359" step="1" value="0">
+        <div class="row" style="margin-top:10px"><div class="name">Tombar frente/trás</div><div class="val" id="vGlbRX">0°</div></div>
+        <input type="range" id="glbRX" min="-180" max="180" step="1" value="0">
+        <div class="row" style="margin-top:10px"><div class="name">Tombar lateral</div><div class="val" id="vGlbRZ">0°</div></div>
+        <input type="range" id="glbRZ" min="-180" max="180" step="1" value="0">
+        <div class="chips" id="glbPresets" style="margin-top:8px"></div>
         <div class="row" style="margin-top:10px"><div class="name">Altura</div><div class="val" id="vGlbY">0,0 m</div></div>
         <input type="range" id="glbY" min="-10" max="30" step="0.1" value="0">
         <div class="acts">
