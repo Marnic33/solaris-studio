@@ -1388,51 +1388,98 @@ ligar('pdeg', 'input', e=>{
 $('#hora').addEventListener('input', e=>{ P.hora=+e.target.value; sincronizar(); });
 
 let editando=false;
+
+/**
+ * Converte cada controle deslizante num campo de digitação permanente.
+ * O elemento range continua no HTML guardando min, max e passo, e recebe o
+ * valor por dispatchEvent — assim toda a lógica de eventos segue igual.
+ */
 function ativarEdicaoNumerica(){
   document.querySelectorAll('input[type=range]').forEach(sl=>{
     const linha = sl.previousElementSibling;
     if(!linha || !linha.classList.contains('row')) return;
     const val = linha.querySelector('.val');
-    if(!val) return;
-    val.title = 'Toque para digitar';
-    val.addEventListener('click', ()=>abrirEditor(val, sl));
+    if(!val || val.dataset.pronto) return;
+
+    /* separa o número da unidade que já estava no texto */
+    const texto = val.textContent.trim();
+    const unidade = (texto.match(/[^\d,.\-\s]+$/) || [''])[0].trim();
+
+    val.dataset.pronto = '1';
+    val.textContent = '';
+    val.style.borderBottom = 'none';
+    val.style.cursor = 'default';
+
+    const inp = document.createElement('input');
+    inp.type = 'number';
+    inp.className = 'campo';
+    inp.step = sl.step || 'any';
+    inp.min = sl.min; inp.max = sl.max;
+    inp.value = sl.value;
+    inp.inputMode = (sl.step && String(sl.step).includes('.')) ? 'decimal' : 'numeric';
+    val.appendChild(inp);
+
+    if(unidade){
+      const un = document.createElement('span');
+      un.className = 'un';
+      un.textContent = unidade;
+      val.appendChild(un);
+    }
+    val.dataset.unidade = unidade;
+    sl.dataset.campo = '1';
+
+    const aplicar = ()=>{
+      let v = parseFloat(String(inp.value).replace(',','.'));
+      if(isNaN(v)){ inp.value = sl.value; inp.classList.remove('fora'); return; }
+      const min = +sl.min, max = +sl.max;
+      const cortado = Math.min(max, Math.max(min, v));
+      inp.classList.toggle('fora', cortado !== v);
+      if(cortado !== v) inp.value = cortado;
+      if(+sl.value === cortado) return;
+      sl.value = cortado;
+      editando = true;                    /* impede sincronizar de sobrescrever */
+      sl.dispatchEvent(new Event('input', {bubbles:true}));
+      editando = false;
+    };
+
+    inp.addEventListener('input', aplicar);
+    inp.addEventListener('focus', ()=>{ editando = true; inp.select(); });
+    inp.addEventListener('blur', ()=>{
+      editando = false; inp.classList.remove('fora'); sincronizar();
+    });
+    inp.addEventListener('keydown', e=>{
+      if(e.key === 'Enter'){ e.preventDefault(); inp.blur(); }
+      if(e.key === 'Escape'){ inp.value = sl.value; inp.blur(); }
+    });
   });
 }
-function abrirEditor(val, sl){
-  if(editando) return;
-  editando = true;
-  const antes = val.textContent;
-  const inp = document.createElement('input');
-  inp.type='number'; inp.className='valedit';
-  inp.step=sl.step; inp.min=sl.min; inp.max=sl.max; inp.value=sl.value;
-  val.textContent=''; val.appendChild(inp);
-  inp.focus(); inp.select();
-  let fechado=false;
-  const fim = ok=>{
-    if(fechado) return; fechado=true;
-    const bruto = String(inp.value).replace(',','.');
-    editando=false;
-    val.textContent = antes;
-    if(ok){
-      let v = parseFloat(bruto);
-      if(!isNaN(v)){
-        v = Math.min(+sl.max, Math.max(+sl.min, v));
-        sl.value = v;
-        sl.dispatchEvent(new Event('input',{bubbles:true}));
-        return;
-      }
-    }
-    sincronizar();
-  };
-  inp.addEventListener('keydown', e=>{
-    if(e.key==='Enter'){ e.preventDefault(); fim(true); }
-    if(e.key==='Escape'){ e.preventDefault(); fim(false); }
-  });
-  inp.addEventListener('blur', ()=>fim(true));
+
+/** Atualiza um campo já convertido, sem atrapalhar quem está digitando. */
+function porValor(id, valor, unidade){
+  const sl = document.getElementById(id);
+  if(!sl) return;
+  const linha = sl.previousElementSibling;
+  const inp = linha && linha.querySelector('.campo');
+  if(!inp) return;
+  if(document.activeElement === inp) return;
+  const casas = String(sl.step||'').includes('.')
+    ? String(sl.step).split('.')[1].length : 0;
+  inp.value = Number(valor).toFixed(casas);
+  if(unidade){
+    const un = linha.querySelector('.un');
+    if(un) un.textContent = unidade;
+  }
 }
 
 function sincronizar(){
   if(editando) return;
+  /* devolve aos campos os valores que o próprio código alterou */
+  document.querySelectorAll('input[type=range][data-campo]').forEach(sl=>{
+    const linha = sl.previousElementSibling;
+    const inp = linha && linha.querySelector('.campo');
+    if(inp && document.activeElement !== inp && +inp.value !== +sl.value)
+      inp.value = sl.value;
+  });
   $('#vComp').textContent=br(P.comp,1)+' m';
   $('#vLarg').textContent=br(P.larg,1)+' m';
   $('#vPd').textContent=br(P.pd,1)+' m';
@@ -1456,6 +1503,8 @@ function sincronizar(){
   gid('vOem').textContent='R$ '+br(P.oem,0);
   gid('vGlbE').textContent=br(glb.escala,3)+'×';
   gid('vGlbR').textContent=glb.rot+'°';
+  gid('vGlbRX').textContent=br(glb.rx,0)+'°';
+  gid('vGlbRZ').textContent=br(glb.rz,0)+'°';
   gid('vGlbX').textContent=br(glb.x,1)+' m';
   gid('vGlbY').textContent=br(glb.y,1)+' m';
   gid('vGlbZ').textContent=br(glb.z,1)+' m';
@@ -1821,6 +1870,17 @@ ligar('coord', 'keydown', e=>{
 });
 
 /* ===================== abas / painel ===================== */
+/* No computador a roda do mouse é vertical; converte para rolagem lateral. */
+(function(){
+  const tabs=document.getElementById('tabs');
+  if(!tabs) return;
+  tabs.addEventListener('wheel', e=>{
+    if(Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+    e.preventDefault();
+    tabs.scrollLeft += e.deltaY;
+  }, {passive:false});
+})();
+
 document.querySelectorAll('#tabs button').forEach(b=>{
   b.onclick=()=>{
     document.querySelectorAll('#tabs button').forEach(x=>x.classList.remove('on'));
@@ -2229,11 +2289,10 @@ gid('pjSalvar').onclick = async ()=>{
     projetoAtual = {id:p.id, nome:p.nome};
     gid('pjMsg').innerHTML = `Salvo: <b>${p.nome}</b> · ${p.modulos} módulos · `+
       `${br(p.potencia,2)} kWp.`;
-    listarProjetos();
     const r = await PJ.sincronizar(p);
     gid('pjMsg').innerHTML += r.ok
       ? ' <b>Enviado para a nuvem</b> — dá para abrir em outro aparelho.'
-      : ` <span style="opacity:.7">Salvo só neste aparelho.</span>`+
+      : ` <span style="opacity:.7">Salvo apenas neste aparelho.</span>`+
         `<br><span class="al">Nuvem: ${r.motivo}</span>`+
         (r.dica ? `<br>${r.dica}` : '')+
         `<br><span style="opacity:.6">Diagnóstico: abra `+
@@ -2285,8 +2344,8 @@ gid('pjNuvem').onclick = async ()=>{
   try{
     const lista = await PJ.listarNuvem();
     if(!lista.length){
-      cx.innerHTML='<div class="note">Nenhum projeto na nuvem ainda. '+
-        'Salve um projeto para enviá-lo.</div>';
+      cx.innerHTML='<div class="note">Nenhum projeto salvo ainda. '+
+        'Preencha os dados acima e toque em Salvar.</div>';
     } else {
       cx.innerHTML=`<table><thead><tr><th>Projeto</th><th>kWp</th><th></th></tr></thead><tbody>`+
         lista.map(p=>`<tr><td><span class="k">${p.nome||p.id}</span>`+
@@ -2294,23 +2353,46 @@ gid('pjNuvem').onclick = async ()=>{
           `<br><span style="opacity:.5;font-size:10px">`+
           `${String(p.atualizadoEm||'').slice(0,10)}</span></td>`+
           `<td>${br(p.potencia||0,2)}</td>`+
-          `<td><button class="chip" data-nuvem="${p.id}">abrir</button></td></tr>`).join('')+
+          `<td style="white-space:nowrap"><button class="chip" data-nuvem="${p.id}">abrir</button> `+
+          `<button class="chip del" data-apagar="${p.id}" data-nome="${p.nome||p.id}">✕</button>`+
+          `</td></tr>`).join('')+
         `</tbody></table>`;
+
       cx.querySelectorAll('[data-nuvem]').forEach(bt=>bt.onclick=async ()=>{
         bt.textContent='…';
         try{
           const p = await PJ.baixarNuvem(bt.dataset.nuvem);
+          limparCena();
           aplicarEstado(p.estado);
-          PJ.salvarProjeto(p);
           projetoAtual={id:p.id, nome:p.nome};
           gid('pjNome').value=p.nome||''; gid('pjCliente').value=p.cliente||'';
           gid('pjData').value=(p.data||'').slice(0,10); gid('pjNota').value=p.nota||'';
-          listarProjetos();
-          gid('pjMsg').innerHTML=`Baixado da nuvem: <b>${p.nome}</b>.`;
+          gid('pjMsg').innerHTML=`Aberto: <b>${p.nome}</b>.`;
         }catch(e){
           gid('pjMsg').innerHTML=`<span class="al">${e.message}</span>`;
         }
         bt.textContent='abrir';
+      });
+
+      cx.querySelectorAll('[data-apagar]').forEach(bt=>bt.onclick=async ()=>{
+        const nome=bt.dataset.nome;
+        if(bt.dataset.confirmar!=='1'){
+          bt.dataset.confirmar='1';
+          bt.textContent='confirmar?';
+          setTimeout(()=>{ bt.dataset.confirmar=''; bt.textContent='✕'; }, 4000);
+          return;
+        }
+        bt.textContent='…';
+        try{
+          await PJ.apagarNuvem(bt.dataset.apagar);
+          PJ.apagarProjeto(bt.dataset.apagar);
+          if(projetoAtual.id===bt.dataset.apagar) projetoAtual={id:null,nome:''};
+          gid('pjMsg').innerHTML=`Removido: <b>${nome}</b>.`;
+          gid('pjNuvem').click();
+        }catch(e){
+          gid('pjMsg').innerHTML=`<span class="al">Não consegui excluir: ${e.message}</span>`;
+          bt.textContent='✕';
+        }
       });
     }
   }catch(err){
@@ -2318,8 +2400,19 @@ gid('pjNuvem').onclick = async ()=>{
       `Se a nuvem ainda não está configurada, defina <b>SUPABASE_URL</b> e `+
       `<b>SUPABASE_KEY</b> nas variáveis de ambiente da Vercel.</div>`;
   }
-  b.disabled=false; b.textContent='Buscar projetos da nuvem';
+  b.disabled=false; b.textContent='Atualizar lista';
 };
+
+/* limpa o que não pertence ao projeto novo antes de aplicar outro estado */
+function limparCena(){
+  limparMapa();
+  if(modeloGLB){ scene.remove(modeloGLB); modeloGLB=null; glb.cru=null; }
+  gid('ctrlGlb').style.display='none';
+  fecharSelecao();
+  historico.length=0; botaoDesfazer();
+  PERDAS={valido:false, total:0, porFace:[], porFaceMes:null, porModulo:[], horas:0};
+  CONTA=null;
+}
 
 gid('pjExportar').onclick = ()=>{
   if(!exigirPJ()) return;
@@ -2347,7 +2440,7 @@ gid('pjArquivo').onchange = async e=>{
 /* ===================== modelo 3D importado ===================== */
 let modeloGLB=null, arrastarGLB=false;
 /* posição, rotação e escala próprias — independentes da casa paramétrica */
-const glb={escala:1, rot:0, x:0, y:0, z:0, largura:12, cru:null};
+const glb={escala:1, rot:0, rx:0, rz:0, x:0, y:0, z:0, largura:12, cru:null};
 
 gid('btnGlb').onclick = ()=> gid('arqGlb').click();
 
@@ -2378,8 +2471,9 @@ gid('arqGlb').onchange = e=>{
 
     glb.largura=12;
     glb.escala=+(glb.largura/Math.max(glb.cru.x, glb.cru.z)).toFixed(4);
-    glb.rot=0;
+    glb.rot=0; glb.rx=0; glb.rz=0; glb.autoApoio=true;
     glb.x=P.casaX; glb.z=P.casaZ;
+    montarPresetsGLB();
     glb.y=-glb.cru.minY*glb.escala;
 
     scene.add(modeloGLB);
@@ -2401,8 +2495,24 @@ gid('arqGlb').onchange = e=>{
 function posicionarGLB(){
   if(!modeloGLB) return;
   modeloGLB.scale.setScalar(glb.escala);
-  modeloGLB.rotation.y = glb.rot*RAD;
+  /* ordem YXZ: o giro horizontal é o principal, os tombos corrigem o eixo
+     que o arquivo trouxe (modelos de CAD costumam vir com Z para cima) */
+  modeloGLB.rotation.order = 'YXZ';
+  modeloGLB.rotation.set(glb.rx*RAD, glb.rot*RAD, glb.rz*RAD);
   modeloGLB.position.set(glb.x, glb.y, glb.z);
+  apoiarGLB();
+}
+/* recalcula a altura para a base encostar no chão depois de qualquer giro */
+function apoiarGLB(){
+  if(!modeloGLB || !glb.autoApoio) return;
+  modeloGLB.updateMatrixWorld(true);
+  const c=new THREE.Box3().setFromObject(modeloGLB);
+  const desloca=-c.min.y;
+  if(Math.abs(desloca)>0.005){
+    glb.y+=desloca;
+    modeloGLB.position.y=glb.y;
+    const el=document.getElementById('glbY'); if(el) el.value=glb.y;
+  }
 }
 function devolverControlesGLB(){
   const v={glbL:glb.largura, glbE:glb.escala, glbR:glb.rot,
@@ -2431,7 +2541,8 @@ ligar('glbL', 'input', e=>{
   posicionarGLB(); sincronizar(); tSombra=0;
 });
 
-[['glbE','escala'],['glbR','rot'],['glbX','x'],['glbY','y'],['glbZ','z']]
+[['glbE','escala'],['glbR','rot'],['glbRX','rx'],['glbRZ','rz'],
+ ['glbX','x'],['glbY','y'],['glbZ','z']]
 .forEach(([id,k])=>{
   const el=document.getElementById(id);
   if(!el) return;
@@ -2445,6 +2556,23 @@ ligar('glbL', 'input', e=>{
     posicionarGLB(); sincronizar(); tSombra=0;
   });
 });
+
+function montarPresetsGLB(){
+  chips(gid('glbPresets'), [
+    ['normal','Em pé'],
+    ['zup','Z para cima'],
+    ['deitado','Deitado ×'],
+    ['deitadoz','Deitado ↑']],
+    ()=>false,
+    k=>{
+      const v={normal:[0,0], zup:[-90,0], deitado:[90,0], deitadoz:[0,90]}[k];
+      glb.rx=v[0]; glb.rz=v[1];
+      const a=document.getElementById('glbRX'); if(a) a.value=glb.rx;
+      const b=document.getElementById('glbRZ'); if(b) b.value=glb.rz;
+      glb.autoApoio=true;
+      posicionarGLB(); sincronizar(); enquadrarGLB(); tSombra=0;
+    });
+}
 
 gid('glbAterrar').onclick = ()=>{
   if(!glb.cru) return;
@@ -3478,5 +3606,6 @@ etapa('ligação',          ()=> montarLigacao());
 etapa('horizonte',        ()=> montarHorizonte());
 etapa('projetos',         ()=>{
   gid('pjData').value = new Date().toISOString().slice(0,10);
-  listarProjetos();
+  gid('pjNuvem').click();
 });
+etapa('campos',           ()=> ativarEdicaoNumerica());
