@@ -1300,35 +1300,53 @@ chips($('#show'), [['verSombra','Sombra'],['verRota','Trajetória'],['verNorte',
     if(k==='verFix'){ montarModulos(); atualizarResumo(); }
   });
 
+/* Converte controles que surgiram depois da inicialização. */
+function converterNovos(){ ativarEdicaoNumerica(); }
+
 function sincronizarFaces(){
   chips($('#faces'), FACES.map((f,i)=>[String(i), f.nome]),
     k=>P.faces.has(+k),
     k=>{ const i=+k; P.faces.has(i)?P.faces.delete(i):P.faces.add(i);
          montarModulos(); sincronizarFaces(); atualizarResumo(); tSombra=0; });
 
-  /* limite individual de cada superfície ativa */
+  /* Limite individual de cada superfície ativa. Campo em branco = sem limite. */
   const cx=gid('limiteFaces');
   if(!cx) return;
   const ativas=[...P.faces].filter(i=>FACES[i]).sort((a,b)=>a-b);
   if(!ativas.length){ cx.innerHTML=''; return; }
+
   cx.innerHTML = ativas.map(i=>{
     const n=CONT.porFace[i]||0;
     const lim=P.maxFace[i];
-    const cap=lim===undefined?'livre':lim;
-    return `<div class="row" style="margin-top:10px">`+
-      `<div class="name">${FACES[i].nome}</div>`+
-      `<div class="val"><span class="k">${n}</span> / ${cap}</div></div>`+
-      `<input type="range" class="limFace" data-f="${i}" min="0" max="60" step="1" `+
-      `value="${lim===undefined?60:lim}">`;
+    return `<div class="row">`+
+      `<div class="name">${FACES[i].nome} <span class="k">${n}</span> no lugar</div>`+
+      `<div class="val"><input type="number" class="campo limFace" data-f="${i}" `+
+      `min="0" max="150" step="1" placeholder="livre" `+
+      `value="${lim===undefined?'':lim}"><span class="un">máx</span></div></div>`;
   }).join('');
-  cx.querySelectorAll('.limFace').forEach(sl=>{
-    sl.addEventListener('input', e=>{
-      const i=+e.target.dataset.f, v=+e.target.value;
-      if(v>=60) delete P.maxFace[i]; else P.maxFace[i]=v;
+
+  converterNovos();
+  cx.querySelectorAll('.limFace').forEach(inp=>{
+    const aplicar = fechar=>{
+      const i=+inp.dataset.f;
+      const t=String(inp.value).trim();
+      if(t===''){ delete P.maxFace[i]; }
+      else {
+        const v=parseInt(t,10);
+        if(isNaN(v)) { if(fechar) inp.value=''; return; }
+        if(v<0 || v>150){ inp.classList.add('fora'); if(!fechar) return;
+          P.maxFace[i]=Math.min(150,Math.max(0,v)); inp.value=P.maxFace[i]; }
+        else P.maxFace[i]=v;
+      }
+      inp.classList.remove('fora');
       montarModulos(); sincronizarFaces(); atualizarResumo(); tSombra=0;
-    });
+    };
+    inp.addEventListener('input', ()=>aplicar(false));
+    inp.addEventListener('blur', ()=>aplicar(true));
+    inp.addEventListener('keydown', e=>{ if(e.key==='Enter') inp.blur(); });
   });
 }
+
 function listarObstaculos(){
   chips($('#listaObs'), OBS.map((o,i)=>[String(i), `${i+1} ${OBSTIPOS[o.tipo].n.split(' ')[0]}`]),
     k=>obsSel===+k, k=>{ obsSel=+k; listarObstaculos(); sincronizar(); });
@@ -2903,21 +2921,34 @@ function montarHorizonte(){
 }
 function editorHorizonte(){
   const cx=gid('horEditor');
+  if(!cx) return;
   if(!P.horizonte){ cx.innerHTML=''; atualizarNotaHorizonte(); return; }
   cx.innerHTML = SETORES.map((nome,i)=>
-    `<div class="row" style="margin-bottom:2px">`+
-    `<div class="name">${nome}</div>`+
-    `<div class="val">${br(P.horizonte[i],0)}°</div></div>`+
-    `<input type="range" class="horSl" data-i="${i}" min="0" max="45" step="1" `+
-    `value="${P.horizonte[i]}">`).join('');
-  cx.querySelectorAll('.horSl').forEach(sl=>{
-    sl.addEventListener('input', e=>{
-      P.horizonte[+e.target.dataset.i]=+e.target.value;
-      editorHorizonte(); sincronizar(); montarAux(); tSombra=0;
-    });
+    `<div class="row"><div class="name">${nome}</div>`+
+    `<div class="val"><input type="number" class="campo horC" data-i="${i}" `+
+    `min="0" max="60" step="1" value="${P.horizonte[i]}"><span class="un">°</span>`+
+    `</div></div>`).join('');
+  converterNovos();
+  cx.querySelectorAll('.horC').forEach(inp=>{
+    const aplicar = fechar=>{
+      const i=+inp.dataset.i;
+      let v=parseFloat(String(inp.value).replace(',','.'));
+      if(isNaN(v)){ if(fechar) inp.value=P.horizonte[i]; return; }
+      const fora = v<0 || v>60;
+      inp.classList.toggle('fora', fora);
+      if(fora && !fechar) return;
+      v=Math.min(60, Math.max(0, v));
+      if(fechar){ inp.value=v; inp.classList.remove('fora'); }
+      P.horizonte[i]=v;
+      atualizarNotaHorizonte(); montarAux(); tSombra=0;
+    };
+    inp.addEventListener('input', ()=>aplicar(false));
+    inp.addEventListener('blur', ()=>aplicar(true));
+    inp.addEventListener('keydown', e=>{ if(e.key==='Enter') inp.blur(); });
   });
   atualizarNotaHorizonte();
 }
+
 function atualizarNotaHorizonte(){
   const el=gid('notaHorizonte');
   if(!P.horizonte){ el.textContent='Horizonte livre: nenhum relevo bloqueando o sol.'; return; }
