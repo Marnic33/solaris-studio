@@ -1313,6 +1313,90 @@ chips($('#show'), [['verSombra','Sombra'],['verRota','Trajetória'],['verNorte',
     if(k==='verFix'){ montarModulos(); atualizarResumo(); }
   });
 
+/**
+ * Editor de fileiras: uma linha por fileira, com orientação, quantidade de
+ * módulos e deslocamento. Toda alteração refaz o arranjo pelo caminho normal,
+ * então sombreamento, validação elétrica e materiais acompanham.
+ */
+function editorFileiras(){
+  const cx=gid('editorFileiras');
+  if(!cx || !cx.querySelectorAll) return;
+  const linhas=(CONT.linhas)||[];
+  if(!linhas.length){
+    cx.innerHTML='<div class="note">Nenhuma fileira ainda. Escolha uma superfície acima.</div>';
+    return;
+  }
+  cx.innerHTML = linhas.map(l=>{
+    const lim=colFileira[l.chave];
+    const aj=ajusteFileira[l.chave]||{du:0,dv:0};
+    const desloc=(aj.du||aj.dv) ? ` · desloc ${br(aj.du,2)}/${br(aj.dv,2)} m` : '';
+    const fora=fileirasFora.has(l.chave);
+    return `<div style="border-top:1px solid var(--line);padding:10px 0${fora?';opacity:.5':''}">`+
+      `<div class="row" style="margin-bottom:8px">`+
+      `<div class="name"><span class="k">${l.faceNome}</span> · fileira ${l.fileira+1}`+
+      `<br><span style="opacity:.6;font-size:11px">${l.modulos} de ${l.cabem} `+
+      `cabem${desloc}${fora?' · removida':''}</span></div>`+
+      `<div class="val"><input type="number" class="campo colFil" data-c="${l.chave}" `+
+      `min="0" max="${Math.max(1,l.cabem)}" step="1" placeholder="${l.cabem}" `+
+      `value="${lim===undefined?'':lim}"><span class="un">mód</span></div></div>`+
+      `<div class="chips">`+
+      `<button class="chip oriFil${l.ori==='retrato'?' on':''}" `+
+        `data-c="${l.chave}" data-o="retrato">Retrato</button>`+
+      `<button class="chip oriFil${l.ori==='paisagem'?' on':''}" `+
+        `data-c="${l.chave}" data-o="paisagem">Paisagem</button>`+
+      `<button class="chip movFil" data-c="${l.chave}" data-d="e">&larr;</button>`+
+      `<button class="chip movFil" data-c="${l.chave}" data-d="d">&rarr;</button>`+
+      `<button class="chip movFil" data-c="${l.chave}" data-d="c">&uarr;</button>`+
+      `<button class="chip movFil" data-c="${l.chave}" data-d="b">&darr;</button>`+
+      `<button class="chip movFil" data-c="${l.chave}" data-d="z">centrar</button>`+
+      `</div></div>`;
+  }).join('');
+
+  const refaz=()=>{ montarModulos(); editorFileiras(); atualizarResumo(); tSombra=0; };
+
+  cx.querySelectorAll('.colFil').forEach(inp=>{
+    const aplicar = fechar=>{
+      const c=inp.dataset.c, t=String(inp.value).trim();
+      if(t===''){ delete colFileira[c]; }
+      else {
+        const v=parseInt(t,10);
+        if(isNaN(v)){ if(fechar) inp.value=''; return; }
+        const max=+inp.max;
+        if(v<0 || v>max){
+          inp.classList.add('fora');
+          if(!fechar) return;
+          colFileira[c]=Math.min(max,Math.max(0,v)); inp.value=colFileira[c];
+        } else colFileira[c]=v;
+      }
+      inp.classList.remove('fora');
+      snapshot(); refaz();
+    };
+    inp.addEventListener('input', ()=>aplicar(false));
+    inp.addEventListener('blur', ()=>aplicar(true));
+    inp.addEventListener('keydown', e=>{ if(e.key==='Enter') inp.blur(); });
+  });
+
+  cx.querySelectorAll('.oriFil').forEach(b=>{ b.onclick=()=>{
+    snapshot();
+    oriFileira[b.dataset.c]=b.dataset.o;
+    delete colFileira[b.dataset.c];   /* muda a largura do módulo: recomeça livre */
+    refaz();
+  };});
+
+  cx.querySelectorAll('.movFil').forEach(b=>{ b.onclick=()=>{
+    snapshot();
+    const c=b.dataset.c;
+    if(b.dataset.d==='z'){ delete ajusteFileira[c]; refaz(); return; }
+    if(!ajusteFileira[c]) ajusteFileira[c]={du:0,dv:0};
+    const a=ajusteFileira[c];
+    if(b.dataset.d==='e') a.du-=PASSO;
+    if(b.dataset.d==='d') a.du+=PASSO;
+    if(b.dataset.d==='c') a.dv+=PASSO;
+    if(b.dataset.d==='b') a.dv-=PASSO;
+    refaz();
+  };});
+}
+
 /* Converte controles que surgiram depois da inicialização. */
 function converterNovos(){ ativarEdicaoNumerica(); }
 
