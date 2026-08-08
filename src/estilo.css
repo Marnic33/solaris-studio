@@ -1,5 +1,4 @@
-
-  :root{
+:root{
     --graphite:#11151b; --graphite-2:#171d25; --line:#2a333f;
     --ink:#e7ecf2; --muted:#8b97a6; --amber:#e8a200; --cyan:#49c6c0; --alert:#e0644a;
   }
@@ -56,8 +55,11 @@
   #grip .now{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--amber)}
 
   #tabs{display:flex;border-bottom:1px solid var(--line);flex:0 0 auto}
-  #tabs{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
-  #tabs::-webkit-scrollbar{display:none}
+  #tabs{overflow-x:auto;-webkit-overflow-scrolling:touch;scroll-behavior:smooth;
+    scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+  #tabs::-webkit-scrollbar{height:3px}
+  #tabs::-webkit-scrollbar-thumb{background:var(--line);border-radius:2px}
+  #tabs::-webkit-scrollbar-track{background:transparent}
   #tabs button{flex:0 0 auto;min-width:76px;padding:12px 8px;background:transparent;border:0;border-bottom:2px solid transparent;
     color:var(--muted);font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;
     letter-spacing:.1em;font-size:12px;cursor:pointer}
@@ -71,7 +73,21 @@
   .row{display:flex;align-items:center;gap:12px;margin-bottom:8px}
   .row .name{font-size:13px;flex:1;color:#c3ccd7}
   .row .val{font-family:'IBM Plex Mono',monospace;font-size:13px;min-width:86px;text-align:right}
-  input[type=range]{-webkit-appearance:none;width:100%;height:24px;background:transparent;display:block}
+  /* Os controles deslizantes ficam ocultos: guardam min, max e passo, mas a
+     entrada de valor é sempre por digitação — mais preciso e menos frustrante
+     no celular. */
+  input[type=range]{display:none !important}
+  .campo{width:104px;padding:7px 9px;background:rgba(13,17,22,.85);
+    border:1px solid var(--line);color:var(--ink);
+    font-family:'IBM Plex Mono',monospace;font-size:13px;text-align:right;
+    border-radius:2px;-moz-appearance:textfield}
+  .campo:focus{outline:none;border-color:var(--amber);background:rgba(232,162,0,.06)}
+  .campo::-webkit-outer-spin-button,.campo::-webkit-inner-spin-button{
+    -webkit-appearance:none;margin:0}
+  .campo.fora{border-color:var(--alert)}
+  .un{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);
+    margin-left:6px;min-width:26px;display:inline-block}
+  .row{align-items:center;margin-bottom:11px}
   input[type=range]::-webkit-slider-runnable-track{height:2px;background:var(--line)}
   input[type=range]::-moz-range-track{height:2px;background:var(--line)}
   input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;
