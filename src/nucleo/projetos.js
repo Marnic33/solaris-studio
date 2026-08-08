@@ -113,6 +113,16 @@ export async function baixarNuvem(id) {
   return p;
 }
 
+/** Remove um projeto da nuvem. */
+export async function apagarNuvem(id) {
+  const r = await fetch(`/api/projetos?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({}));
+    throw new Error(e.detalhe || e.erro || `HTTP ${r.status}`);
+  }
+  return true;
+}
+
 /** Busca a lista de projetos da nuvem. */
 export async function listarNuvem() {
   const r = await fetch('/api/projetos');
